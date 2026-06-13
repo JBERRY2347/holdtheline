@@ -18,7 +18,7 @@ p,li{color:#c9d4ec;font-size:15px} a{color:#4da3ff}
 <p class="muted">Last updated: 13 June 2026</p>
 
 <div class="box">
-<b>The short version:</b> Hold the Line does all of its analysis on your device. It does not collect, store, transmit, or share your camera images, microphone audio, or any personal data. There are no servers, no accounts, and no analytics.
+<b>The short version:</b> Hold the Line does all of its camera and microphone analysis on your device. It never records, transmits, or shares your video or audio. If you choose to play <b>online</b> with other devices, only small pieces of game state and a single "composure" number per turn are relayed between players — never any video, audio, or images. No accounts, no advertising, no analytics.
 </div>
 
 <h2>What Hold the Line does</h2>
@@ -33,8 +33,11 @@ p,li{color:#c9d4ec;font-size:15px} a{color:#4da3ff}
 <h2>Data we store on your device</h2>
 <p>The only data Hold the Line saves is each player's <b>baseline profile</b> (numeric cue averages, not images or audio), kept in your browser's local storage so players don't have to re-calibrate every round. You can erase it any time by clearing the app's site data. This information never leaves your device.</p>
 
+<h2>Online play</h2>
+<p>Online play is optional. When you create or join a room, the app connects to a third-party realtime relay (<b>Supabase Realtime</b>) to pass messages between the players' devices. Those messages contain only <b>game state</b> (room code, the display name you type, team, scores, the current claim, and each turn's final tell number) and a live <b>composure value</b> while someone is answering. <b>Your camera and microphone analysis always stay on your own device — no video, audio, or images are ever sent.</b> These messages are relayed in the moment for the other players and are not stored in a database by us. If you only play on a single shared device, the app makes no network connections beyond loading itself and the face model.</p>
+
 <h2>Data we collect</h2>
-<p><b>None.</b> Hold the Line has no backend servers, no user accounts, no advertising, no third-party analytics, and no tracking. We cannot see any of your data because it never reaches us.</p>
+<p><b>None.</b> Hold the Line has no accounts, no advertising, no third-party analytics, and no tracking, and we operate no database that stores your gameplay. We cannot see your camera or microphone data because it never leaves your device.</p>
 
 <h2>Children</h2>
 <p>Hold the Line is not directed at children under 13 and collects no personal information from anyone.</p>

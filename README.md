@@ -40,6 +40,24 @@ falls back to raw expressiveness.
 - **The Auction** — interrogators wager points before they call. Read it right and clean up;
   read it wrong and pay.
 
+## Play online (multiple devices)
+
+Everyone can play from their **own** phone or laptop, anywhere. Get the group together on a
+voice/video call (Zoom, Discord, FaceTime — or just be in the same room); Hold the Line
+syncs the game and each speaker's live composure meter, while the camera read stays on each
+person's device. **No video or audio is streamed** — only the game state and meter numbers.
+
+From the home screen tap **🌐 Play online**, then **Create a room** (you're the host) and
+share the 4-letter code, or **Join** with a code. Pick teams in the lobby and the host
+starts. Each player calibrates on their own device when their team defends; the player in
+the chair answers to their camera while everyone watches the meter; the other team's captain
+makes the call.
+
+> Online is powered by [Supabase Realtime](https://supabase.com/realtime) (free tier). To run
+> your own copy, create a Supabase project and paste its **Project URL** + **anon public** key
+> into the `SUPABASE_URL` / `SUPABASE_ANON_KEY` constants near the top of the script in
+> `index.html`. Only public broadcast/presence channels are used — no database, no stored data.
+
 ## Privacy
 
 All camera and (optional) microphone analysis happens **on your device**, in the moment.
