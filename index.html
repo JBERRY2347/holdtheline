@@ -823,6 +823,19 @@ function updateCameraForRole(){
   if(camShouldRun()){ if(!running) startCamera(); }
   else if(running) stopCamera();
 }
+/* prime camera permission up front (online) so there's no surprise mid-game */
+let camPrimed=false;
+async function primeCamera(){
+  const el=$('camPrimeMsg');
+  if(el){ el.textContent='Requesting camera…'; el.style.color='var(--dim)'; }
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+    s.getTracks().forEach(t=>t.stop()); camPrimed=true;
+    if(el){ el.textContent='✓ Camera ready — it only turns on when it’s your turn.'; el.style.color='var(--good)'; }
+  }catch(e){
+    if(el){ el.textContent='Camera blocked. Allow it in your browser’s address bar, then retry. ('+(e.name||e.message)+')'; el.style.color='var(--bad)'; }
+  }
+}
 function refreshLocalBaseline(){
   if(net.mode==='local') baseline=match.baselines[match.activeSpeaker]||null;
   else if(net.me) baseline=loadSavedBaseline(net.me.name)||null;
@@ -907,7 +920,8 @@ function gameOnFrame(raw,b,now){
    ONLINE (Supabase Realtime) — host-authoritative snapshot sync.
    Camera/analysis stay on each device; only state + meter numbers travel.
    ================================================================= */
-const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS']);
+const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL']);
+function teamIdxOf(name){ return match.teams.findIndex(t=>t.players.includes(name)); }
 function lastName(){ try{ return localStorage.getItem('htlName')||''; }catch(e){ return ''; } }
 function rememberName(n){ try{ localStorage.setItem('htlName',n); }catch(e){} }
 function onlineMsg(t){ const e=$('onlineMsg'); if(e) e.textContent=t; }
@@ -918,7 +932,7 @@ async function loadSupa(){
   return net.supa;
 }
 function genCode(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<4;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
-function presenceList(){ const st=net.channel?net.channel.presenceState():{}; const out=[]; Object.values(st).forEach(ms=>ms.forEach(p=>out.push(p))); return out; }
+function presenceList(){ const st=net.channel?net.channel.presenceState():{}; const seen={}; Object.values(st).forEach(ms=>ms.forEach(p=>{ if(p&&p.clientId) seen[p.clientId]=p; })); return Object.values(seen); }
 function uniqueName(name){ const taken=new Set(presenceList().filter(p=>p.clientId!==net.clientId).map(p=>p.name)); let base=name||'Player', n=base, i=2; while(taken.has(n)) n=base+' '+(i++); return n; }
 
 async function createRoom(name){
@@ -989,10 +1003,16 @@ let lastMeterSent=0;
 function netSendMeter(v){ const now=performance.now(); if(now-lastMeterSent<120) return; lastMeterSent=now; if(net.channel) net.channel.send({type:'broadcast',event:'meter',payload:{v}}); }
 function sendIntent(ev){ if(net.channel) net.channel.send({type:'broadcast',event:'intent',payload:{ev,from:net.me?net.me.name:'?'}}); }
 function hostApplyIntent(ev,from){
-  if(!CLIENT_OK.has(ev.t)) return;                                   // clients can't drive game flow
-  if(ev.t==='ANSWER_SCORED' && from!==match.activeSpeaker) return;
-  if(['TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS'].includes(ev.t) && !(match.teams[1-match.defending]&&match.teams[1-match.defending].players[0]===from)) return;
-  if(ev.t==='CAL_DONE' && ev.player!==from) return;
+  if(!CLIENT_OK.has(ev.t)) return;
+  const def=match.defending, t=ev.t;
+  const dcap=match.teams[def]&&match.teams[def].players[0];          // defending-team captain
+  const icap=match.teams[1-def]&&match.teams[1-def].players[0];      // interrogating-team captain
+  if(t==='ANSWER_SCORED' && from!==match.activeSpeaker) return;
+  if(t==='CAL_DONE' && ev.player!==from) return;
+  if(['TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS'].includes(t) && from!==icap) return;
+  if(['TO_DOSSIER','BEGIN_INTERROGATION'].includes(t) && from!==dcap) return;     // captain runs the round
+  if(['NEXT_QUESTION','TO_CALL'].includes(t) && from!==match.activeSpeaker) return; // whoever's in the chair steps
+  if(t==='TAG_IN' && teamIdxOf(from)!==def) return;                  // any defender can grab the chair
   applyLocal(ev); broadcastState();
 }
 function applySnapshot(snap){
@@ -1061,7 +1081,12 @@ function renderLobby(){
       <div style="display:flex;gap:12px;margin-top:12px">
         <div style="flex:1"><div class="fld">Team A</div>${byTeam(0).map(row).join('')||'<p class="lead">—</p>'}</div>
         <div style="flex:1"><div class="fld">Team B</div>${byTeam(1).map(row).join('')||'<p class="lead">—</p>'}</div>
-      </div></div>
+      </div>
+      <p class="lead" style="font-size:11.5px;margin-top:10px">The <b>first player</b> on each team is the captain: they run their team's turn. Whoever's in the chair answers; the other team makes the call.</p></div>
+    <div class="card"><h2>Allow your camera</h2>
+      <p class="lead">Your camera is used <b>only when it's your turn to answer</b>, and the video never leaves your device. Allow it now so there's no pop-up mid-game.</p>
+      <button class="btn block" data-act="primecam">🎥 Enable my camera</button>
+      <div id="camPrimeMsg" class="lead" style="margin-top:6px;min-height:16px">${camPrimed?'✓ Camera ready — it only turns on when it’s your turn.':''}</div></div>
     ${isHost?`<div class="card"><h2>Host setup</h2>
       <label class="fld">Mode</label><select class="in" id="lobbyMode">${Object.entries(MODES).filter(([k])=>k!=='solo').map(([k,mo])=>`<option value="${k}" ${k===match.modeKey?'selected':''}>${esc(mo.label)}</option>`).join('')}</select>
       <label class="fld" style="margin-top:8px">Deck</label><select class="in" id="lobbyDeck">${Object.entries(DECKS).map(([k,d])=>`<option value="${k}">${esc(d.label)}</option>`).join('')}</select>
@@ -1104,18 +1129,21 @@ function renderStage(){
   const online=net.mode!=='local';
   const meDef=!online||(net.me&&net.me.teamIdx===m.defending);     // on the defending team (or local)
   const meSpk=!online||(net.me&&net.me.name===m.activeSpeaker);     // the active speaker (or local)
-  const meHost=!online||net.mode==='host';                          // drives game flow (or local)
+  const dcap=m.teams[m.defending]&&m.teams[m.defending].players[0];
+  const meDefCap=!online||(net.me&&net.me.name===dcap);            // defending-team captain runs the round (or local)
+  const showSecret=(online&&meDef)||(!online&&!!cfg.solo);          // who may see which claims are lies
   const watch=(who,what)=>`<div class="card"><div class="gate"><div class="big">📺</div><h3 class="t">${who}</h3><p class="lead">${what}</p></div></div>`;
   const roster=`<div class="speakerRow">${m.speakers.map(s=>`<span class="spk ${m.baselines[s]?'done':''}">${m.baselines[s]?'✓ ':''}${esc(s)}</span>`).join('')||'<span class="lead">No players.</span>'}</div>`;
   if(m.phase==='calibrate'){
     const done=m.speakers.filter(s=>m.baselines[s]).length;
-    const cont=meHost?`<button class="btn block ${done?'primary':''}" data-act="todossier">${done?'Continue ›':'Skip calibration ›'}</button>`:'';
+    const cont=meDefCap?`<button class="btn block ${done?'primary':''}" data-act="todossier">${done?'Continue ›':'Skip calibration ›'}</button>`
+      :(online?'<div class="lead" style="margin-top:6px;font-size:11.5px">Your team captain continues once everyone’s calibrated.</div>':'');
     if(online && !meDef){
-      p.innerHTML=watch(esc(dteam)+' is calibrating','Each defender is capturing a baseline face on their own device.')+(meHost?`<div class="card">${cont}</div>`:'');
+      p.innerHTML=watch(esc(dteam)+' is getting ready','They’re each calibrating their camera. <b>Your camera stays off</b> — you’re guessing this round. Sit tight.');
     } else if(online){
       const mineDone=net.me&&m.baselines[net.me.name];
-      p.innerHTML=`<div class="card"><h2>Calibrate yourself</h2>
-        <p class="lead">Look at your camera and relax for 8 seconds so the meter learns <i>your</i> normal face. ${mineDone?'<b>You’re calibrated ✓</b> — recapture anytime.':'You can skip; the meter falls back to raw expressiveness.'}</p>
+      p.innerHTML=`<div class="card"><h2>Step 1 · Calibrate your face</h2>
+        <p class="lead"><b>Your camera is on.</b> Look straight at it and relax for 8 seconds — this teaches the meter your normal face. ${mineDone?'<b>Done ✓</b> — recapture anytime.':'(You can skip; the meter still works, just rougher.)'}</p>
         ${roster}
         <div class="controls"><button class="btn primary" data-act="capture" id="btnCal">⏺ ${mineDone?'Recapture 8s':'Capture 8s'}</button></div>
         ${cont}</div>`;
@@ -1133,14 +1161,14 @@ function renderStage(){
     }
   } else if(m.phase==='dossier'){
     if(online && !meDef){
-      p.innerHTML=watch(esc(dteam)+' is studying their dossier','They’re memorizing which claims to lie about. Get ready to listen and watch the meter.');
+      p.innerHTML=watch(esc(dteam)+' is reading their dossier','They’re learning which claims to lie about. <b>Your camera stays off</b> — get ready to listen and watch the meter.');
     } else if(online){
-      p.innerHTML=`<div class="card"><h2>Your dossier — ${esc(dteam)}</h2>
-        <p class="lead">Answer the green ones truthfully. <b>Lie convincingly</b> on the red ones and keep your meter calm — the other team hears every answer on your call.</p>
+      p.innerHTML=`<div class="card"><h2>Step 2 · Your secret dossier</h2>
+        <p class="lead">Tell the truth on the <span class="chip good">green</span> ones; <b>lie convincingly</b> on the <span class="chip bad">red</span> ones and keep your meter calm. Only <b>${esc(dteam)}</b> sees this — the other team just hears your answers.</p>
         ${m.dossier.map((s,i)=>`<div class="stmt"><div class="top"><span class="n">${i+1}</span>
           <span class="chip ${s.protected?'bad':'good'}">${s.protected?'LIE — protect this':'TRUTH'}</span></div>
           <div class="txt">${esc(s.text)}</div></div>`).join('')}
-        ${meHost?'<button class="btn primary block" data-act="begin" style="margin-top:6px">Start interrogation ›</button>':'<div class="notice" style="margin-top:8px">Ready — waiting for the host to start.</div>'}</div>`;
+        ${meDefCap?'<button class="btn primary block" data-act="begin" style="margin-top:6px">Start interrogation ›</button>':'<div class="notice" style="margin-top:8px">Memorize your lies — your captain starts the interrogation.</div>'}</div>`;
     } else if(!dossierRevealed){
       p.innerHTML=`<div class="card"><div class="gate"><div class="big">🙈</div>
         <h3 class="t">Defending team only</h3>
@@ -1159,19 +1187,24 @@ function renderStage(){
   } else if(m.phase==='interrogate'){
     const answered=m.dossier.filter(s=>s.answered).length, total=m.dossier.length;
     const s=m.dossier[m.curIdx];
-    const tagRow = (cfg.meterReset==='speaker'&&m.speakers.length>1&&meHost)
+    const tagRow = (cfg.meterReset==='speaker'&&m.speakers.length>1&&meDef)
       ? `<label class="fld">Tag in (re-anchors the meter)</label><div class="speakerRow">${m.speakers.map(pl=>`<span class="spk ${pl===m.activeSpeaker?'active':''} ${m.baselines[pl]?'':'mut'}" data-act="tagin" data-player="${esc(pl)}">${esc(pl)}${m.baselines[pl]?'':' (no baseline)'}</span>`).join('')}</div>`
       : '';
     const answerCtl = meSpk
       ? `<button class="btn primary" data-act="answer" id="btnAnswer">${qmode.active?'⏹ stop':'▶ Start answer'}</button>`
       : `<span class="lead" style="align-self:center"><b>${esc(m.activeSpeaker||'—')}</b> is answering…</span>`;
-    const nextBtn = meHost?'<button class="btn" data-act="next">⏭ Next claim</button>':'';
-    const advBtn = meHost?`<button class="btn block ${answered===total?'primary':''}" data-act="${cfg.solo?'soloresults':'tocall'}" style="margin-top:6px">${cfg.solo?(answered===total?'See how you did ›':'Skip to results ›'):(answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›')}</button>`:'';
+    const nextBtn = meSpk?'<button class="btn" data-act="next">⏭ Next claim</button>':'';
+    const advBtn = meSpk?`<button class="btn block ${answered===total?'primary':''}" data-act="${cfg.solo?'soloresults':'tocall'}" style="margin-top:6px">${cfg.solo?(answered===total?'See how you did ›':'Skip to results ›'):(answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›')}</button>`:'';
     const hint = online
-      ? (meSpk?'<p class="lead" style="margin-top:8px;font-size:11.5px">Tap <b>Start answer</b>, deliver the line to your camera, tap stop. Keep the meter left of the line.</p>':'<p class="lead" style="margin-top:8px;font-size:11.5px">Listen on your call and watch the meter. The host advances the round.</p>')
+      ? (meSpk?'<p class="lead" style="margin-top:8px;font-size:11.5px"><b>You’re in the chair — camera on.</b> Tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the line. Then <b>Next claim</b>, or <b>tag in</b> a teammate.</p>'
+         : meDef?'<p class="lead" style="margin-top:8px;font-size:11.5px">Your team is answering. <b>Your camera turns on when you tag yourself in.</b></p>'
+         : '<p class="lead" style="margin-top:8px;font-size:11.5px">You’re guessing — <b>your camera stays off</b>. Listen on your call and watch the meter.</p>')
       : `<p class="lead" style="margin-top:8px;font-size:11.5px">${cfg.solo?'Tap <b>Start answer</b>, deliver the line to the camera, tap stop. Keep the meter left of the white line to stay composed.':'Defender: tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the white line to look composed.'}</p>`;
-    p.innerHTML=`<div class="card"><h2>Claim ${m.curIdx+1} of ${total} <span style="margin-left:auto;font-size:11px;color:var(--dim)">${answered}/${total} answered</span></h2>
-      <div class="stmt cur"><div class="txt">${esc(s.text)}</div>${s.answered?`<div class="tellbar"><div class="tf" style="width:${s.tell}%"></div></div><div style="font-size:11px;color:var(--dim);margin-top:3px">answer captured · tell ${s.tell}%</div>`:''}</div>
+    const secretStrip = showSecret?`<div style="margin:0 0 8px">${m.dossier.map((d,i)=>`<span class="chip ${d.protected?'bad':'good'}" style="margin:0 4px 4px 0;${i===m.curIdx?'outline:2px solid var(--text);outline-offset:1px':''}">${i+1} ${d.protected?'lie':'truth'}</span>`).join('')}</div>`:'';
+    const curChip = showSecret?`<span class="chip ${s.protected?'bad':'good'}">${s.protected?'LIE — keep calm':'TRUTH'}</span>`:'';
+    p.innerHTML=`<div class="card"><h2>${online?'Step 3 · ':''}Claim ${m.curIdx+1} of ${total} <span style="margin-left:auto;font-size:11px;color:var(--dim)">${answered}/${total} answered</span></h2>
+      ${secretStrip}
+      <div class="stmt cur"><div class="top"><span class="n">${m.curIdx+1}</span>${curChip}</div><div class="txt">${esc(s.text)}</div>${s.answered?`<div class="tellbar"><div class="tf" style="width:${s.tell}%"></div></div><div style="font-size:11px;color:var(--dim);margin-top:3px">answer captured · tell ${s.tell}%</div>`:''}</div>
       <div class="controls">${answerCtl}${nextBtn}</div>
       ${tagRow}
       ${advBtn}
@@ -1313,6 +1346,7 @@ document.addEventListener('click',e=>{
     case 'createroom': createRoom(val('onName')); break;
     case 'joinroom': joinRoom(val('joinCode'),val('onName')); break;
     case 'pickteam': setTeam(+el.dataset.idx); break;
+    case 'primecam': primeCamera(); break;
     case 'leaveroom': leaveRoom(); dispatch({t:'GOTO',screen:'home'}); break;
     case 'hoststart': {
       const t0=net.roster.filter(p=>p.teamIdx===0).map(p=>p.name), t1=net.roster.filter(p=>p.teamIdx===1).map(p=>p.name);
