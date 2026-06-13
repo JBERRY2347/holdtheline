@@ -127,7 +127,7 @@ footer a{color:var(--accent)}
 <section class="screen active" id="scr-home">
   <div class="notice"><b>It's a game, not a lie detector.</b> The meter reads how <b>calm or expressive</b> you look — not whether you're telling the truth. A calm liar wins. Everyone on camera should be playing willingly.</div>
   <h3 class="t">Pick a mode</h3>
-  <p class="lead">Two teams. The defending team keeps its planted lies calm while the other team watches the tells and calls them.</p>
+  <p class="lead">Two teams: the defending team keeps its planted lies calm while the other watches the tells and calls them. New here? Start with <b>Solo Practice</b> to see it in action — no setup.</p>
   <div id="modeCards"></div>
   <footer>On-device only · nothing recorded or uploaded · <a href="privacy.html">Privacy</a></footer>
 </section>
@@ -135,7 +135,7 @@ footer a{color:var(--accent)}
 <!-- ============ SETUP ============ -->
 <section class="screen" id="scr-setup">
   <button class="btn" data-act="goto" data-screen="home" style="margin-bottom:10px">‹ Back</button>
-  <div class="card">
+  <div class="card" id="teamSetup">
     <h2>Teams</h2>
     <label class="fld">Team 1 name</label><input class="in" id="tA" maxlength="24" placeholder="Team A">
     <label class="fld">Team 1 players (comma separated)</label><input class="in" id="pA" placeholder="Sam, Jordan, Alex">
@@ -143,13 +143,13 @@ footer a{color:var(--accent)}
     <label class="fld">Team 2 players (comma separated)</label><input class="in" id="pB" placeholder="Riley, Casey">
   </div>
   <div class="card">
-    <h2>Match settings</h2>
+    <h2 id="settingsHd">Match settings</h2>
     <label class="fld">Statement deck</label><select class="in" id="deck"></select>
-    <label class="fld" style="margin-top:12px">Play to</label>
-    <select class="in" id="target"><option value="10">10 points (short)</option><option value="15" selected>15 points</option><option value="20">20 points (long)</option></select>
+    <div id="targetFld"><label class="fld" style="margin-top:12px">Play to</label>
+    <select class="in" id="target"><option value="10">10 points (short)</option><option value="15" selected>15 points</option><option value="20">20 points (long)</option></select></div>
     <div id="modeSummary" style="font-size:12.5px;color:var(--dim);margin-top:12px"></div>
   </div>
-  <button class="btn primary block" data-act="start">▶ Start match</button>
+  <button class="btn primary block" data-act="start" id="startBtn">▶ Start match</button>
 </section>
 
 <!-- ============ STAGE (calibrate / dossier / interrogate) ============ -->
@@ -648,6 +648,7 @@ function voiceLoop(){
    live in dispatch()/the click handlers, never in reduce().
    ================================================================= */
 const MODES={
+ solo:{label:'Solo Practice',tag:'Solo · no setup',blurb:'No teams, no opponent — just you and the meter. Get a dossier, lie convincingly to the camera, and see how calm you can keep your tells. The quickest way to see how it all works.',statements:4,lies:2,answerSecs:16,tellThreshold:55,guesses:'none',coop:false,wager:false,meterReset:'round',solo:true},
  holdtheline:{label:'Hold the Line',tag:'Core',blurb:'Defend a dossier of claims. Keep your planted lies calm; the other team calls the ones they think are lies.',statements:5,lies:2,answerSecs:18,tellThreshold:55,guesses:'multi',coop:false,wager:false,meterReset:'round'},
  relay:{label:'Pass the Pressure',tag:'Relay',blurb:'Tag a teammate in mid-round. The meter re-anchors to whoever is in the chair — pick who delivers the riskiest lie.',statements:5,lies:2,answerSecs:16,tellThreshold:55,guesses:'multi',coop:false,wager:false,meterReset:'speaker'},
  twotruths:{label:'Two Truths · One Cover',tag:'Quick',blurb:'Three claims, one is a cover lie. Interrogators get a single guess. Fast rounds.',statements:3,lies:1,answerSecs:14,tellThreshold:55,guesses:'single',coop:false,wager:false,meterReset:'round'},
@@ -708,6 +709,7 @@ function reduce(m,ev){
       break;
     }
     case 'TO_CALL': m.screen='call'; m.phase='call'; break;
+    case 'SOLO_RESULTS': m.result=computeSoloResult(m); m.phase='call'; m.screen='reveal'; break;
     case 'SET_WAGER': m.call.wager=Math.max(0,Math.min(ev.v,m.teams[1-m.defending].score)); break;
     case 'TOGGLE_PICK': {
       const cfg=MODES[m.modeKey];
@@ -758,6 +760,24 @@ function computeResult(m){
     summary=`${iteam.name} caught ${caught} lie${caught!==1?'s':''}; ${dteam.name} slipped ${kept} past them.`;
   }
   return {rows,dDelta,iDelta,dteamIdx:m.defending,summary};
+}
+
+function computeSoloResult(m){
+  const cfg=MODES[m.modeKey];
+  const rows=m.dossier.map((s,i)=>{ const tv=s.tell!=null?s.tell:null;
+    return {...s,i,tv,survived:tv!=null&&tv<cfg.tellThreshold,ice:tv!=null&&tv<25}; });
+  const lies=rows.filter(r=>r.protected&&r.tv!=null);
+  const kept=lies.filter(r=>r.survived).length;
+  const avg=lies.length?Math.round(lies.reduce((a,r)=>a+r.tv,0)/lies.length):0;
+  const composure=lies.length?Math.max(0,Math.min(100,100-avg)):null;
+  const grade = composure==null?null
+    : composure>=75?{t:'🧊 Ice — masterful bluffer',c:'good'}
+    : composure>=50?{t:'😌 Cool under pressure',c:'good'}
+    : composure>=30?{t:'😬 A little twitchy',c:'warn'}
+    : {t:'😅 Easy to read',c:'bad'};
+  const cold=lies.length?lies.reduce((a,b)=>b.tv<a.tv?b:a):null;
+  const tell=lies.length?lies.reduce((a,b)=>b.tv>a.tv?b:a):null;
+  return {solo:true,rows,liesTotal:lies.length,kept,composure,grade,cold,tell};
 }
 
 /* ---- dispatch: apply transition, then engine side-effects, then render ---- */
@@ -859,19 +879,30 @@ function renderHome(){
 function renderSetup(){
   const dk=$('deck'); if(dk && !dk.dataset.filled){ dk.innerHTML=Object.entries(DECKS).map(([k,d])=>`<option value="${k}">${d.label}</option>`).join(''); dk.dataset.filled='1'; }
   const m=MODES[match.modeKey];
-  $('modeSummary').innerHTML=`<b style="color:var(--text)">${esc(m.label)}</b> — ${m.statements} statements, ${m.lies} planted ${m.lies>1?'lies':'lie'} per round${m.coop?' · co-op vs the meter':''}${m.wager?' · wagering on':''}.`;
+  const solo=!!m.solo;
+  $('teamSetup').style.display=solo?'none':'';
+  $('targetFld').style.display=solo?'none':'';
+  $('settingsHd').textContent=solo?'Practice settings':'Match settings';
+  $('startBtn').textContent=solo?'▶ Start solo practice':'▶ Start match';
+  $('modeSummary').innerHTML=solo
+    ? `<b style="color:var(--text)">Solo Practice</b> — you'll get ${m.statements} claims, ${m.lies} of them to lie about. Just you vs the meter; no teams or scoring.`
+    : `<b style="color:var(--text)">${esc(m.label)}</b> — ${m.statements} statements, ${m.lies} planted ${m.lies>1?'lies':'lie'} per round${m.coop?' · co-op vs the meter':''}${m.wager?' · wagering on':''}.`;
 }
 function renderStage(){
   const m=match, cfg=MODES[m.modeKey], dteam=m.teams[m.defending].name;
   $('videoWrap').classList.toggle('mirror',facing==='user');
   $('meterTick').style.left=cfg.tellThreshold+'%';
-  $('stageTop').innerHTML=`<span class="chip mut">Round ${m.round}</span><span>Defending: <b>${esc(dteam)}</b></span>`+
-    (m.phase==='interrogate'&&m.activeSpeaker?`<span>· In the chair: <b>${esc(m.activeSpeaker)}</b></span>`:'');
+  $('stageTop').innerHTML = cfg.solo
+    ? `<span class="chip info">Solo practice</span><span>Lie low — keep the meter calm</span>`
+    : `<span class="chip mut">Round ${m.round}</span><span>Defending: <b>${esc(dteam)}</b></span>`+
+      (m.phase==='interrogate'&&m.activeSpeaker?`<span>· In the chair: <b>${esc(m.activeSpeaker)}</b></span>`:'');
   const p=$('stagePanel');
   if(m.phase==='calibrate'){
     const done=m.speakers.filter(s=>m.baselines[s]).length;
-    p.innerHTML=`<div class="card"><h2>Calibrate each defender</h2>
-      <p class="lead">Pass the device to each player on <b>${esc(dteam)}</b>. They look at the camera and stay relaxed for 8 seconds — this captures their normal face so the meter reads <i>their</i> tells, not just an expressive face. You can skip and the meter falls back to raw expressiveness.</p>
+    p.innerHTML=`<div class="card"><h2>${cfg.solo?'Calibrate yourself':'Calibrate each defender'}</h2>
+      <p class="lead">${cfg.solo
+        ? 'Look at the camera and stay relaxed for 8 seconds. This captures your normal face so the meter reads <i>your</i> tells, not just an expressive face. You can skip — the meter falls back to raw expressiveness.'
+        : 'Pass the device to each player on <b>'+esc(dteam)+'</b>. They look at the camera and stay relaxed for 8 seconds — this captures their normal face so the meter reads <i>their</i> tells, not just an expressive face. You can skip and the meter falls back to raw expressiveness.'}</p>
       <div class="speakerRow">${m.speakers.map(s=>`<span class="spk ${m.baselines[s]?'done':''}" >${m.baselines[s]?'✓ ':''}${esc(s)}</span>`).join('')||'<span class="lead">No players on this team.</span>'}</div>
       <label class="fld">Capture baseline for</label>
       <select class="in" id="calWho">${m.speakers.map(s=>`<option value="${esc(s)}">${esc(s)}${m.baselines[s]?' (recapture)':''}</option>`).join('')}</select>
@@ -879,14 +910,16 @@ function renderStage(){
       <button class="btn block ${done?'primary':''}" data-act="todossier">${done?'Continue ›':'Skip calibration ›'}</button>
     </div>`;
   } else if(m.phase==='dossier'){
-    if(!dossierRevealed){
+    if(!cfg.solo && !dossierRevealed){
       p.innerHTML=`<div class="card"><div class="gate"><div class="big">🙈</div>
         <h3 class="t">Defending team only</h3>
         <p class="lead"><b>${esc(dteam)}</b>, take the device. Everyone else — look away. This shows which claims you must lie about.</p>
         <button class="btn primary block" data-act="revealdossier">Reveal our dossier</button></div></div>`;
     } else {
-      p.innerHTML=`<div class="card"><h2>Your dossier — ${esc(dteam)}</h2>
-        <p class="lead">Answer truthfully on the green ones. <b>Lie convincingly</b> on the red ones and keep your meter calm. Interrogators will hear every answer.</p>
+      p.innerHTML=`<div class="card"><h2>${cfg.solo?'Your dossier':'Your dossier — '+esc(dteam)}</h2>
+        <p class="lead">${cfg.solo
+          ? 'Answer the green ones truthfully. <b>Lie convincingly</b> on the red ones and keep the meter calm while you do.'
+          : 'Answer truthfully on the green ones. <b>Lie convincingly</b> on the red ones and keep your meter calm. Interrogators will hear every answer.'}</p>
         ${m.dossier.map((s,i)=>`<div class="stmt"><div class="top"><span class="n">${i+1}</span>
           <span class="chip ${s.protected?'bad':'good'}">${s.protected?'LIE — protect this':'TRUTH'}</span></div>
           <div class="txt">${esc(s.text)}</div></div>`).join('')}
@@ -905,8 +938,8 @@ function renderStage(){
         <button class="btn" data-act="next">⏭ Next claim</button>
       </div>
       ${tagRow}
-      <button class="btn block ${answered===total?'primary':''}" data-act="tocall" style="margin-top:6px">${answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›'}</button>
-      <p class="lead" style="margin-top:8px;font-size:11.5px">Defender: tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the white line to look composed.</p>
+      <button class="btn block ${answered===total?'primary':''}" data-act="${cfg.solo?'soloresults':'tocall'}" style="margin-top:6px">${cfg.solo?(answered===total?'See how you did ›':'Skip to results ›'):(answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›')}</button>
+      <p class="lead" style="margin-top:8px;font-size:11.5px">${cfg.solo?'Tap <b>Start answer</b>, deliver the line to the camera, tap stop. Keep the meter left of the white line to stay composed.':'Defender: tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the white line to look composed.'}</p>
     </div>`;
   }
 }
@@ -937,6 +970,33 @@ function renderCall(){
 }
 function renderReveal(){
   const m=match, r=m.result, cfg=MODES[m.modeKey];
+  if(cfg.solo){
+    const rated=r.composure!=null;
+    $('revealBody').innerHTML=`<div class="card"><h2>How you did</h2>
+      ${rated?`<div class="gate"><div class="big">${r.composure}<span style="font-size:18px">/100</span></div>
+        <h3 class="t">${r.grade.t}</h3>
+        <p class="lead">You kept <b>${r.kept} of ${r.liesTotal}</b> ${r.liesTotal===1?'lie':'lies'} under the line.</p></div>`
+       :`<p class="lead">You didn't answer any of the lies, so there's no composure rating this time. Run it again and deliver the <b>red</b> claims to the camera.</p>`}
+      ${r.rows.map(row=>{
+        const wasChip=`<span class="chip ${row.protected?'bad':'good'}">${row.protected?'was a LIE':'was TRUE'}</span>`;
+        let status;
+        if(row.tv==null) status='<span class="chip mut">not answered</span>';
+        else if(row.protected) status=row.survived?`<span class="chip good">held${row.ice?' · ice 🧊':''}</span>`:'<span class="chip warn">meter caught it</span>';
+        else status='<span class="chip mut">truth</span>';
+        return `<div class="stmt"><div class="top"><span class="n">${row.i+1}</span>${wasChip}${status}
+          ${row.tv!=null?`<span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${row.tv}%</span>`:''}</div>
+          <div class="txt">${esc(row.text)}</div>
+          ${row.tv!=null?`<div class="tellbar"><div class="tf" style="width:${row.tv}%"></div></div>`:''}</div>`;
+      }).join('')}
+      ${r.cold?`<div class="stmt" style="margin-top:8px"><div class="top"><span class="chip good">🧊 Coldest bluff</span><span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${r.cold.tv}%</span></div><div class="txt">“${esc(r.cold.text)}”</div></div>`:''}
+      ${r.tell&&r.tell!==r.cold?`<div class="stmt"><div class="top"><span class="chip bad">😅 Biggest tell</span><span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${r.tell.tv}%</span></div><div class="txt">“${esc(r.tell.text)}”</div></div>`:''}
+      <div class="controls" style="margin-top:10px">
+        <button class="btn primary" data-act="soloagain">↻ Practice again</button>
+        <button class="btn" data-act="goto" data-screen="home">Back to menu</button>
+      </div></div>
+      <footer>It's a game, not a lie detector · on-device only · <a href="privacy.html">Privacy</a></footer>`;
+    return;
+  }
   const dteam=m.teams[m.defending].name, iteam=m.teams[1-m.defending].name;
   $('revealBody').innerHTML=`<div class="card"><h2>The reveal</h2>
     <p class="lead">${esc(r.summary)}</p>
@@ -993,6 +1053,12 @@ document.addEventListener('click',e=>{
     case 'pickmode': dispatch({t:'PICK_MODE',key:el.dataset.key}); break;
     case 'goto': dispatch({t:'GOTO',screen:el.dataset.screen}); break;
     case 'start': {
+      if(MODES[match.modeKey].solo){
+        const teams=[{name:'You',players:['You'],score:0},{name:'The meter',players:[],score:0}];
+        dispatch({t:'CONFIG',cfg:{teams,deckKey:val('deck')||'party',target:999}});
+        dispatch({t:'START_MATCH'});
+        break;
+      }
       const teams=[
         {name:val('tA')||'Team A',players:parsePlayers('pA'),score:0},
         {name:val('tB')||'Team B',players:parsePlayers('pB'),score:0}];
@@ -1001,6 +1067,8 @@ document.addEventListener('click',e=>{
       dispatch({t:'START_MATCH'});
       break;
     }
+    case 'soloresults': dispatch({t:'SOLO_RESULTS'}); break;
+    case 'soloagain': dispatch({t:'START_MATCH'}); break;
     case 'capture': { const who=val('calWho')||match.speakers[0]; if(who) captureBaseline(who); break; }
     case 'todossier': dispatch({t:'TO_DOSSIER'}); break;
     case 'revealdossier': dossierRevealed=true; renderStage(); break;
