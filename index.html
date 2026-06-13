@@ -158,7 +158,7 @@ footer a{color:var(--accent)}
   </div>
   <div class="card">
     <h2 id="settingsHd">Match settings</h2>
-    <label class="fld">Statement deck</label><select class="in" id="deck"></select>
+    <span id="deckFld"><label class="fld">Statement deck</label><select class="in" id="deck"></select></span>
     <div id="targetFld"><label class="fld" style="margin-top:12px">Play to</label>
     <select class="in" id="target"><option value="10">10 points (short)</option><option value="15" selected>15 points</option><option value="20">20 points (long)</option></select></div>
     <div id="modeSummary" style="font-size:12.5px;color:var(--dim);margin-top:12px"></div>
@@ -681,6 +681,7 @@ const MODES={
  twotruths:{label:'Two Truths · One Cover',tag:'Quick',blurb:'Three claims, one is a cover lie. Interrogators get a single guess. Fast rounds.',statements:3,lies:1,answerSecs:14,tellThreshold:55,guesses:'single',coop:false,wager:false,meterReset:'round'},
  heist:{label:'The Heist',tag:'Co-op',blurb:'Both teams together keep every cover story under the warden’s threshold. Beat the meter, not each other.',statements:6,lies:3,answerSecs:16,tellThreshold:55,guesses:'none',coop:true,wager:false,meterReset:'speaker'},
  auction:{label:'The Auction',tag:'Risk',blurb:'Interrogators wager points before they call. Read it right and clean up — read it wrong and pay.',statements:5,lies:2,answerSecs:18,tellThreshold:55,guesses:'multi',coop:false,wager:true,meterReset:'round'},
+ custom:{label:'Write Your Own',tag:'Custom Qs',blurb:'The other team writes your questions live. Before each one you secretly pick truth or lie, then keep your meter calm — they try to call the lies.',statements:5,lies:0,answerSecs:20,tellThreshold:55,guesses:'multi',coop:false,wager:false,meterReset:'round',custom:true},
 };
 const DECKS={
  party:{label:'Party',prompts:['Describe what you ate for breakfast today.','Tell us about your last vacation.','What did you do last Friday night?','Describe the last gift you gave someone.','Walk us through your morning routine.','Tell us about a pet you’ve had.','Describe your childhood bedroom.','What’s the last movie you watched, and the plot?','Tell us about your first job.','Describe your best friend.','What’s the worst meal you’ve ever cooked?','Tell us about the last time you cried.','Describe your dream house.','What did you want to be when you grew up?','Tell us about your most embarrassing moment.','What’s in your fridge right now?','Describe the last text message you sent.','Tell us about a time you got in trouble at school.','What’s your guilty-pleasure TV show?','Describe your commute to work.','Tell us about the last gift you received.','What’s the strangest food you’ve ever eaten?','Describe a recurring dream you have.','Tell us about your favorite teacher.','What did you do on your last birthday?','Describe what’s in your bag or pockets right now.','Tell us about a concert or show you’ve been to.','What’s the longest you’ve gone without sleep?','Describe your relationship with your neighbors.','Tell us about a time you were late, and why.','What app do you use the most, and for what?','Describe the last thing you bought online.','Tell us about a hobby you picked up and quit.','What’s your go-to karaoke song?','Describe a family holiday tradition.','Tell us about the last argument you had.','What’s the last photo on your camera roll?','Describe your ideal weekend.','Tell us about a time you got completely lost.','What’s a skill you’re secretly proud of?']},
@@ -709,7 +710,7 @@ function setupRound(m){
   const cfg=MODES[m.modeKey];
   m.speakers=[...m.teams[m.defending].players];
   m.activeSpeaker=m.speakers[0]||null;
-  m.dossier=buildDossier(cfg,m.deckKey);
+  m.dossier=cfg.custom?[]:buildDossier(cfg,m.deckKey);   // custom: the other team authors questions live
   m.curIdx=0; m.call={picks:[],passed:false,wager:0}; m.result=null;
   m.baselines={}; m.speakers.forEach(s=>{ const b=loadSavedBaseline(s); if(b) m.baselines[s]=b; });
   m.phase='calibrate'; m.screen='stage';
@@ -724,7 +725,10 @@ function reduce(m,ev){
     case 'CONFIG': Object.assign(m,ev.cfg); break;
     case 'START_MATCH': m.defending=0; m.round=1; m.over=false; m.log=[]; m.teams[0].score=0; m.teams[1].score=0; setupRound(m); break;
     case 'CAL_DONE': m.baselines[ev.player]=ev.baseline; break;
-    case 'TO_DOSSIER': m.phase='dossier'; break;
+    case 'TO_DOSSIER': m.phase=MODES[m.modeKey].custom?'compose':'dossier'; break;
+    case 'ADD_QUESTION': if((ev.text||'').trim()) m.dossier.push({text:ev.text.trim(),protected:null,tell:null,peak:0,answered:false,leaks:[]}); break;
+    case 'DEL_QUESTION': if(m.dossier[ev.idx]) m.dossier.splice(ev.idx,1); break;
+    case 'CHOOSE': { const s=m.dossier[ev.idx]; if(s) s.protected=!!ev.lie; break; }
     case 'BEGIN_INTERROGATION': m.phase='interrogate'; m.curIdx=Math.max(0,firstUnanswered(m)); break;
     case 'TAG_IN': m.activeSpeaker=ev.player; break;
     case 'NEXT_QUESTION': { const n=firstUnanswered(m); m.curIdx = n>=0?n:Math.min(m.curIdx+1,m.dossier.length-1); break; }
@@ -809,7 +813,7 @@ function computeSoloResult(m){
 
 /* ---- dispatch: apply transition, then engine side-effects, then render ---- */
 /* events that mutate shared match state (relayed online; host-authoritative) */
-const SHARED=new Set(['START_MATCH','CAL_DONE','TO_DOSSIER','BEGIN_INTERROGATION','TAG_IN','NEXT_QUESTION','GOTO_STMT','ANSWER_SCORED','TO_CALL','SET_WAGER','TOGGLE_PICK','LOCK_CALL','PASS','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
+const SHARED=new Set(['START_MATCH','CAL_DONE','TO_DOSSIER','ADD_QUESTION','DEL_QUESTION','CHOOSE','BEGIN_INTERROGATION','TAG_IN','NEXT_QUESTION','GOTO_STMT','ANSWER_SCORED','TO_CALL','SET_WAGER','TOGGLE_PICK','LOCK_CALL','PASS','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
 
 function camShouldRun(){
   if(match.screen!=='stage') return false;
@@ -920,7 +924,7 @@ function gameOnFrame(raw,b,now){
    ONLINE (Supabase Realtime) — host-authoritative snapshot sync.
    Camera/analysis stay on each device; only state + meter numbers travel.
    ================================================================= */
-const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL']);
+const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL','ADD_QUESTION','DEL_QUESTION','CHOOSE']);
 function teamIdxOf(name){ return match.teams.findIndex(t=>t.players.includes(name)); }
 function lastName(){ try{ return localStorage.getItem('htlName')||''; }catch(e){ return ''; } }
 function rememberName(n){ try{ localStorage.setItem('htlName',n); }catch(e){} }
@@ -1007,10 +1011,14 @@ function hostApplyIntent(ev,from){
   const def=match.defending, t=ev.t;
   const dcap=match.teams[def]&&match.teams[def].players[0];          // defending-team captain
   const icap=match.teams[1-def]&&match.teams[1-def].players[0];      // interrogating-team captain
+  const custom=MODES[match.modeKey].custom;
   if(t==='ANSWER_SCORED' && from!==match.activeSpeaker) return;
   if(t==='CAL_DONE' && ev.player!==from) return;
   if(['TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS'].includes(t) && from!==icap) return;
-  if(['TO_DOSSIER','BEGIN_INTERROGATION'].includes(t) && from!==dcap) return;     // captain runs the round
+  if(['ADD_QUESTION','DEL_QUESTION'].includes(t) && teamIdxOf(from)!==1-def) return; // asking team writes questions
+  if(t==='CHOOSE' && from!==match.activeSpeaker) return;             // only the speaker picks truth/lie
+  if(t==='TO_DOSSIER' && from!==dcap) return;                        // defending captain ends calibration
+  if(t==='BEGIN_INTERROGATION' && from!==(custom?icap:dcap)) return; // custom: asking captain sends Qs; else defending captain
   if(['NEXT_QUESTION','TO_CALL'].includes(t) && from!==match.activeSpeaker) return; // whoever's in the chair steps
   if(t==='TAG_IN' && teamIdxOf(from)!==def) return;                  // any defender can grab the chair
   applyLocal(ev); broadcastState();
@@ -1111,10 +1119,13 @@ function renderSetup(){
   if(!solo){ renderPlayerList(0); renderPlayerList(1); }
   $('teamSetup').style.display=solo?'none':'';
   $('targetFld').style.display=solo?'none':'';
+  if($('deckFld')) $('deckFld').style.display=m.custom?'none':'';   // custom: the other team writes the questions
   $('settingsHd').textContent=solo?'Practice settings':'Match settings';
   $('startBtn').textContent=solo?'▶ Start solo practice':'▶ Start match';
   $('modeSummary').innerHTML=solo
     ? `<b style="color:var(--text)">Solo Practice</b> — you'll get ${m.statements} claims, ${m.lies} of them to lie about. Just you vs the meter; no teams or scoring.`
+    : m.custom
+    ? `<b style="color:var(--text)">Write Your Own</b> — the defending team's questions are written live by the other team; each round the speaker secretly picks truth or lie. No deck needed.`
     : `<b style="color:var(--text)">${esc(m.label)}</b> — ${m.statements} statements, ${m.lies} planted ${m.lies>1?'lies':'lie'} per round${m.coop?' · co-op vs the meter':''}${m.wager?' · wagering on':''}.`;
 }
 function renderStage(){
@@ -1184,28 +1195,51 @@ function renderStage(){
           <div class="txt">${esc(s.text)}</div></div>`).join('')}
         <button class="btn primary block" data-act="begin" style="margin-top:6px">Start interrogation ›</button></div>`;
     }
+  } else if(m.phase==='compose'){
+    const meAsk=!online||(net.me&&net.me.teamIdx===(1-m.defending));    // asking/interrogating team authors
+    const icap=m.teams[1-m.defending].players[0];
+    const meAskCap=!online||(net.me&&net.me.name===icap);
+    const iteam=m.teams[1-m.defending].name;
+    if(online && !meAsk){
+      p.innerHTML=watch(esc(iteam)+' is writing your questions','They’re composing the questions you’ll be grilled with. <b>Your camera stays off</b> until you answer — get ready to lie or tell the truth on each.');
+    } else {
+      const keepNewQ=$('newQ')?$('newQ').value:'';
+      p.innerHTML=`<div class="card"><h2>${online?'Step 2 · ':''}Write the questions</h2>
+        <p class="lead">${esc(iteam)}, write questions for <b>${esc(dteam)}</b> to answer. They’ll secretly choose to lie or tell the truth on each — later you try to spot the lies.${online?' Everyone on your team can add some.':''}</p>
+        <div class="playerList">${m.dossier.map((q,i)=>`<div class="stmt"><div class="top"><span class="n">${i+1}</span><button class="btn btnDel" data-act="delq" data-idx="${i}" style="margin-left:auto">✕</button></div><div class="txt">${esc(q.text)}</div></div>`).join('')||'<p class="lead">No questions yet — add a few below.</p>'}</div>
+        <div class="controls" style="margin-top:8px"><input class="in" id="newQ" maxlength="120" placeholder="Type a question…" style="flex:1" value="${esc(keepNewQ)}"><button class="btn" data-act="addq">＋ Add</button></div>
+        ${meAskCap?`<button class="btn primary block" data-act="begin" style="margin-top:10px" ${m.dossier.length<3?'disabled':''}>Send to ${esc(dteam)} › (${m.dossier.length} question${m.dossier.length===1?'':'s'})</button>${m.dossier.length<3?'<p class="lead" style="font-size:11px;margin-top:4px">Add at least 3 questions.</p>':''}`:'<div class="notice" style="margin-top:8px">Add your questions — your captain sends them when the team’s ready.</div>'}
+      </div>`;
+    }
   } else if(m.phase==='interrogate'){
     const answered=m.dossier.filter(s=>s.answered).length, total=m.dossier.length;
     const s=m.dossier[m.curIdx];
     const tagRow = (cfg.meterReset==='speaker'&&m.speakers.length>1&&meDef)
       ? `<label class="fld">Tag in (re-anchors the meter)</label><div class="speakerRow">${m.speakers.map(pl=>`<span class="spk ${pl===m.activeSpeaker?'active':''} ${m.baselines[pl]?'':'mut'}" data-act="tagin" data-player="${esc(pl)}">${esc(pl)}${m.baselines[pl]?'':' (no baseline)'}</span>`).join('')}</div>`
       : '';
+    const needChoice = !!cfg.custom && s && s.protected==null;        // custom: speaker picks truth/lie first
     const answerCtl = meSpk
       ? `<button class="btn primary" data-act="answer" id="btnAnswer">${qmode.active?'⏹ stop':'▶ Start answer'}</button>`
       : `<span class="lead" style="align-self:center"><b>${esc(m.activeSpeaker||'—')}</b> is answering…</span>`;
     const nextBtn = meSpk?'<button class="btn" data-act="next">⏭ Next claim</button>':'';
-    const advBtn = meSpk?`<button class="btn block ${answered===total?'primary':''}" data-act="${cfg.solo?'soloresults':'tocall'}" style="margin-top:6px">${cfg.solo?(answered===total?'See how you did ›':'Skip to results ›'):(answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›')}</button>`:'';
+    const choiceBlock = meSpk
+      ? `<div class="lead" style="margin-bottom:6px">${online?'Only you can see this — ':'Others, look away — '}for this question, will you…</div>
+         <div class="controls"><button class="btn good" data-act="choose" data-lie="0">😇 Tell the truth</button><button class="btn bad" data-act="choose" data-lie="1">😈 Tell a lie</button></div>`
+      : `<span class="lead" style="align-self:center"><b>${esc(m.activeSpeaker||'—')}</b> is deciding truth or lie…</span>`;
+    const controls = needChoice ? choiceBlock : `<div class="controls">${answerCtl}${nextBtn}</div>`;
+    const advBtn = (meSpk && !needChoice)?`<button class="btn block ${answered===total?'primary':''}" data-act="${cfg.solo?'soloresults':'tocall'}" style="margin-top:6px">${cfg.solo?(answered===total?'See how you did ›':'Skip to results ›'):(answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›')}</button>`:'';
     const hint = online
-      ? (meSpk?'<p class="lead" style="margin-top:8px;font-size:11.5px"><b>You’re in the chair — camera on.</b> Tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the line. Then <b>Next claim</b>, or <b>tag in</b> a teammate.</p>'
+      ? (needChoice&&meSpk?'<p class="lead" style="margin-top:8px;font-size:11.5px">Pick truth or lie — the other team can’t see your choice. Then answer to your camera and keep the meter calm.</p>'
+         : meSpk?'<p class="lead" style="margin-top:8px;font-size:11.5px"><b>You’re in the chair — camera on.</b> Tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the line. Then <b>Next claim</b>.</p>'
          : meDef?'<p class="lead" style="margin-top:8px;font-size:11.5px">Your team is answering. <b>Your camera turns on when you tag yourself in.</b></p>'
          : '<p class="lead" style="margin-top:8px;font-size:11.5px">You’re guessing — <b>your camera stays off</b>. Listen on your call and watch the meter.</p>')
-      : `<p class="lead" style="margin-top:8px;font-size:11.5px">${cfg.solo?'Tap <b>Start answer</b>, deliver the line to the camera, tap stop. Keep the meter left of the white line to stay composed.':'Defender: tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the white line to look composed.'}</p>`;
-    const secretStrip = showSecret?`<div style="margin:0 0 8px">${m.dossier.map((d,i)=>`<span class="chip ${d.protected?'bad':'good'}" style="margin:0 4px 4px 0;${i===m.curIdx?'outline:2px solid var(--text);outline-offset:1px':''}">${i+1} ${d.protected?'lie':'truth'}</span>`).join('')}</div>`:'';
-    const curChip = showSecret?`<span class="chip ${s.protected?'bad':'good'}">${s.protected?'LIE — keep calm':'TRUTH'}</span>`:'';
-    p.innerHTML=`<div class="card"><h2>${online?'Step 3 · ':''}Claim ${m.curIdx+1} of ${total} <span style="margin-left:auto;font-size:11px;color:var(--dim)">${answered}/${total} answered</span></h2>
+      : `<p class="lead" style="margin-top:8px;font-size:11.5px">${cfg.solo?'Tap <b>Start answer</b>, deliver the line to the camera, tap stop. Keep the meter left of the white line to stay composed.':(cfg.custom?'Choose truth or lie (others look away), then tap <b>Start answer</b> and deliver the line. Keep the meter calm.':'Defender: tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the white line to look composed.')}</p>`;
+    const secretStrip = (showSecret && !cfg.custom)?`<div style="margin:0 0 8px">${m.dossier.map((d,i)=>`<span class="chip ${d.protected?'bad':'good'}" style="margin:0 4px 4px 0;${i===m.curIdx?'outline:2px solid var(--text);outline-offset:1px':''}">${i+1} ${d.protected?'lie':'truth'}</span>`).join('')}</div>`:'';
+    const curChip = (showSecret && s.protected!=null)?`<span class="chip ${s.protected?'bad':'good'}">${s.protected?'LIE — keep calm':'TRUTH'}</span>`:'';
+    p.innerHTML=`<div class="card"><h2>${online?'Step 3 · ':''}${cfg.custom?'Question':'Claim'} ${m.curIdx+1} of ${total} <span style="margin-left:auto;font-size:11px;color:var(--dim)">${answered}/${total} answered</span></h2>
       ${secretStrip}
       <div class="stmt cur"><div class="top"><span class="n">${m.curIdx+1}</span>${curChip}</div><div class="txt">${esc(s.text)}</div>${s.answered?`<div class="tellbar"><div class="tf" style="width:${s.tell}%"></div></div><div style="font-size:11px;color:var(--dim);margin-top:3px">answer captured · tell ${s.tell}%</div>`:''}</div>
-      <div class="controls">${answerCtl}${nextBtn}</div>
+      ${controls}
       ${tagRow}
       ${advBtn}
       ${hint}
@@ -1340,6 +1374,9 @@ document.addEventListener('click',e=>{
     }
     case 'addplayer': { const t=+el.dataset.team; syncDraftFromDOM(); draftPlayers[t].push(''); renderPlayerList(t); const ins=document.querySelectorAll(`[data-pteam="${t}"]`); if(ins.length) ins[ins.length-1].focus(); break; }
     case 'delplayer': { const t=+el.dataset.team, i=+el.dataset.idx; syncDraftFromDOM(); draftPlayers[t].splice(i,1); if(!draftPlayers[t].length) draftPlayers[t].push(''); renderPlayerList(t); break; }
+    case 'addq': { const v=$('newQ'); const t=(v&&v.value.trim())||''; if(t){ if(v) v.value=''; dispatch({t:'ADD_QUESTION',text:t}); } break; }
+    case 'delq': dispatch({t:'DEL_QUESTION',idx:+el.dataset.idx}); break;
+    case 'choose': dispatch({t:'CHOOSE',idx:match.curIdx,lie:el.dataset.lie==='1'}); break;
     case 'soloresults': dispatch({t:'SOLO_RESULTS'}); break;
     case 'soloagain': dispatch({t:'START_MATCH'}); break;
     case 'capture': { const who = net.mode!=='local' ? (net.me&&net.me.name) : (val('calWho')||match.speakers[0]); if(who) captureBaseline(who); break; }
