@@ -1,5 +1,5 @@
 /* Hold the Line service worker — caches the app shell and the ML model/wasm at runtime */
-const CACHE = 'holdtheline-v9';
+const CACHE = 'holdtheline-v10';
 const SHELL = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-512-maskable.png', './apple-touch-icon.png', './privacy.html'];
 
 self.addEventListener('install', e => {

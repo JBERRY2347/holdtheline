@@ -177,7 +177,7 @@ footer a{color:var(--accent)}
     <div id="centerHint" class="centerHint">centering…</div>
   </div>
   <div class="meterBox">
-    <div class="meterHd"><span>Composure / tells</span><span id="meterVal">—</span></div>
+    <div class="meterHd"><span id="meterLabel">Composure / tells</span><span id="meterVal">—</span></div>
     <div class="meter"><div class="mfill" id="meterFill"></div><div class="mtick" id="meterTick" style="left:55%"></div></div>
     <div class="meterLbl"><span>composed</span><span>← keep it left to win →</span><span>tell!</span></div>
   </div>
@@ -924,8 +924,10 @@ function gameOnFrame(raw,b,now){
    ONLINE (Supabase Realtime) — host-authoritative snapshot sync.
    Camera/analysis stay on each device; only state + meter numbers travel.
    ================================================================= */
-const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL','ADD_QUESTION','DEL_QUESTION','CHOOSE']);
+const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL','ADD_QUESTION','DEL_QUESTION','CHOOSE','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
 function teamIdxOf(name){ return match.teams.findIndex(t=>t.players.includes(name)); }
+function isCaptain(name){ return !!name && match.teams.some(t=>t.players&&t.players[0]===name); }
+function canDriveFlow(){ return net.mode!=='client' || (net.me && isCaptain(net.me.name)); }  // host or a team captain advances neutral screens
 function lastName(){ try{ return localStorage.getItem('htlName')||''; }catch(e){ return ''; } }
 function rememberName(n){ try{ localStorage.setItem('htlName',n); }catch(e){} }
 function onlineMsg(t){ const e=$('onlineMsg'); if(e) e.textContent=t; }
@@ -1014,13 +1016,16 @@ function hostApplyIntent(ev,from){
   const custom=MODES[match.modeKey].custom;
   if(t==='ANSWER_SCORED' && from!==match.activeSpeaker) return;
   if(t==='CAL_DONE' && ev.player!==from) return;
-  if(['TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS'].includes(t) && from!==icap) return;
+  if(['TOGGLE_PICK','SET_WAGER'].includes(t) && teamIdxOf(from)!==1-def) return; // whole guessing team picks
+  if(['LOCK_CALL','PASS'].includes(t) && teamIdxOf(from)!==1-def && !(MODES[match.modeKey].coop&&isCaptain(from))) return; // guessing team locks (co-op: any captain opens the vault)
   if(['ADD_QUESTION','DEL_QUESTION'].includes(t) && teamIdxOf(from)!==1-def) return; // asking team writes questions
   if(t==='CHOOSE' && from!==match.activeSpeaker) return;             // only the speaker picks truth/lie
   if(t==='TO_DOSSIER' && from!==dcap) return;                        // defending captain ends calibration
   if(t==='BEGIN_INTERROGATION' && from!==(custom?icap:dcap)) return; // custom: asking captain sends Qs; else defending captain
   if(['NEXT_QUESTION','TO_CALL'].includes(t) && from!==match.activeSpeaker) return; // whoever's in the chair steps
   if(t==='TAG_IN' && teamIdxOf(from)!==def) return;                  // any defender can grab the chair
+  if(['TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN'].includes(t) && !isCaptain(from)) return; // either captain advances
+  if(t==='PLAY_AGAIN'){ applyLocal(ev); match.screen='lobby'; render(); broadcastState(); return; } // back to lobby online
   applyLocal(ev); broadcastState();
 }
 function applySnapshot(snap){
@@ -1097,6 +1102,7 @@ function renderLobby(){
       <div id="camPrimeMsg" class="lead" style="margin-top:6px;min-height:16px">${camPrimed?'✓ Camera ready — it only turns on when it’s your turn.':''}</div></div>
     ${isHost?`<div class="card"><h2>Host setup</h2>
       <label class="fld">Mode</label><select class="in" id="lobbyMode">${Object.entries(MODES).filter(([k])=>k!=='solo').map(([k,mo])=>`<option value="${k}" ${k===match.modeKey?'selected':''}>${esc(mo.label)}</option>`).join('')}</select>
+      <div id="lobbyModeBlurb" class="lead" style="font-size:11.5px;margin-top:4px">${esc((MODES[match.modeKey]||MODES.holdtheline).blurb)}</div>
       <label class="fld" style="margin-top:8px">Deck</label><select class="in" id="lobbyDeck">${Object.entries(DECKS).map(([k,d])=>`<option value="${k}">${esc(d.label)}</option>`).join('')}</select>
       <label class="fld" style="margin-top:8px">Play to</label><select class="in" id="lobbyTarget"><option value="10">10 points</option><option value="15" selected>15 points</option><option value="20">20 points</option></select>
       <button class="btn primary block" data-act="hoststart" style="margin-top:12px">▶ Start match</button>
@@ -1143,6 +1149,9 @@ function renderStage(){
   const dcap=m.teams[m.defending]&&m.teams[m.defending].players[0];
   const meDefCap=!online||(net.me&&net.me.name===dcap);            // defending-team captain runs the round (or local)
   const showSecret=(online&&meDef)||(!online&&!!cfg.solo);          // who may see which claims are lies
+  const ml=$('meterLabel');
+  if(ml) ml.textContent = (online && m.phase==='interrogate' && !meSpk) ? '🔴 '+(m.activeSpeaker||'speaker')+'’s tell meter (live)'
+    : (m.phase==='interrogate'&&online&&meSpk) ? 'Your composure / tells' : 'Composure / tells';
   const watch=(who,what)=>`<div class="card"><div class="gate"><div class="big">📺</div><h3 class="t">${who}</h3><p class="lead">${what}</p></div></div>`;
   const roster=`<div class="speakerRow">${m.speakers.map(s=>`<span class="spk ${m.baselines[s]?'done':''}">${m.baselines[s]?'✓ ':''}${esc(s)}</span>`).join('')||'<span class="lead">No players.</span>'}</div>`;
   if(m.phase==='calibrate'){
@@ -1250,11 +1259,11 @@ function renderCall(){
   const m=match, cfg=MODES[m.modeKey];
   const iteam=m.teams[1-m.defending].name, dteam=m.teams[m.defending].name;
   const online=net.mode!=='local';
-  const meCaller=!online||(net.me&&m.teams[1-m.defending].players[0]===net.me.name);   // interrogator captain
+  const meCaller=!online||(net.me&&net.me.teamIdx===(1-m.defending));   // anyone on the guessing team can call
   const meHost=!online||net.mode==='host';
   if(cfg.coop){
     $('callBody').innerHTML=`<div class="card"><h2>The Heist</h2><p class="lead">No accusations in co-op — the warden (the meter) already judged each cover story. See how the crew did.</p>
-      ${meHost?'<button class="btn primary block" data-act="lockcall">Open the vault ›</button>':'<div class="notice">Waiting for the host…</div>'}</div>`;
+      ${canDriveFlow()?'<button class="btn primary block" data-act="lockcall">Open the vault ›</button>':'<div class="notice">Waiting for a captain…</div>'}</div>`;
     return;
   }
   const single=cfg.guesses==='single';
@@ -1319,7 +1328,7 @@ function renderReveal(){
       <div class="scoreRow" style="flex:1"><span>${esc(dteam)}<br><span style="font-size:11px;color:var(--dim)">defending</span></span><span class="delta ${r.dDelta>=0?'up':'down'}">${r.dDelta>=0?'+':''}${r.dDelta}</span></div>
       <div class="scoreRow" style="flex:1"><span>${esc(iteam)}<br><span style="font-size:11px;color:var(--dim)">interrogating</span></span><span class="delta ${r.iDelta>=0?'up':'down'}">${r.iDelta>=0?'+':''}${r.iDelta}</span></div>
     </div>
-    ${net.mode==='client'?'<div class="notice" style="margin-top:10px">Waiting for the host…</div>':'<button class="btn primary block" data-act="toscore" style="margin-top:10px">Update scoreboard ›</button>'}</div>`;
+    ${canDriveFlow()?'<button class="btn primary block" data-act="toscore" style="margin-top:10px">Update scoreboard ›</button>':'<div class="notice" style="margin-top:10px">Waiting for a captain to continue…</div>'}</div>`;
 }
 function renderScore(){
   const m=match;
@@ -1327,9 +1336,9 @@ function renderScore(){
   $('scoreBody').innerHTML=`<div class="card"><h2>Scoreboard · play to ${m.target}</h2>
     ${m.teams.map((t,i)=>`<div class="scoreRow ${lead===i?'lead':''}"><span>${esc(t.name)} ${lead===i?'<span class="chip good">leading</span>':''}</span><b>${t.score}</b></div>`).join('')}
     ${m.over?`<div class="notice" style="margin-top:10px">🏁 Someone reached ${m.target} — that's match point.</div>
-      ${net.mode==='client'?'<div class="lead" style="margin-top:8px">Waiting for the host…</div>':'<button class="btn primary block" data-act="toend">See final results ›</button>'}`
+      ${canDriveFlow()?'<button class="btn primary block" data-act="toend">See final results ›</button>':'<div class="lead" style="margin-top:8px">Waiting for a captain…</div>'}`
      :`<p class="lead" style="margin-top:8px">Next round, <b>${esc(m.teams[1-m.defending].name)}</b> defends.</p>
-      ${net.mode==='client'?'<div class="lead">Waiting for the host to start the next round…</div>':'<button class="btn primary block" data-act="nextround">Next round ›</button>'}`}
+      ${canDriveFlow()?'<button class="btn primary block" data-act="nextround">Next round ›</button>':'<div class="lead">Waiting for a captain to start the next round…</div>'}`}
   </div>`;
 }
 function renderEnd(){
@@ -1343,7 +1352,7 @@ function renderEnd(){
     ${m.teams.map(t=>`<div class="scoreRow ${winner===t?'lead':''}"><span>${esc(t.name)}</span><b>${t.score}</b></div>`).join('')}
     ${stone?`<div class="stmt" style="margin-top:10px"><div class="top"><span class="chip good">🧊 Coldest bluff</span><span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${stone.tell}%</span></div><div class="txt"><b>${esc(stone.speaker||'?')}</b> on “${esc(stone.text)}”</div></div>`:''}
     ${tell?`<div class="stmt"><div class="top"><span class="chip bad">😅 Biggest tell</span><span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${tell.tell}%</span></div><div class="txt"><b>${esc(tell.speaker||'?')}</b> on “${esc(tell.text)}”</div></div>`:''}
-    ${net.mode==='client'?'<div class="notice" style="margin-top:10px">Waiting for the host to start a new match…</div>':`<button class="btn primary block" data-act="playagain" style="margin-top:10px">${net.mode==='host'?'Back to lobby ›':'Play again ›'}</button>`}</div>
+    ${canDriveFlow()?`<button class="btn primary block" data-act="playagain" style="margin-top:10px">${net.mode==='local'?'Play again ›':'Back to lobby ›'}</button>`:'<div class="notice" style="margin-top:10px">Waiting for a captain to start a new match…</div>'}</div>
     <footer>It's a game, not a lie detector · on-device only · <a href="privacy.html">Privacy</a></footer>`;
 }
 
@@ -1408,11 +1417,15 @@ document.addEventListener('click',e=>{
     case 'toend': dispatch({t:'TO_END'}); break;
     case 'playagain':
       if(net.mode==='host'){ applyLocal({t:'PLAY_AGAIN'}); match.screen='lobby'; render(); broadcastState(); }
-      else if(net.mode!=='client') dispatch({t:'PLAY_AGAIN'});
+      else dispatch({t:'PLAY_AGAIN'});   // client captain -> intent (host sends room back to lobby); local -> reset to home
       break;
     case 'mic': toggleMic(); break;
     case 'flip': flipCamera(); break;
   }
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='lobbyMode'){ match.modeKey=e.target.value; const b=$('lobbyModeBlurb'); if(b) b.textContent=(MODES[e.target.value]||{}).blurb||''; }
+  if(e.target.id==='lobbyDeck') match.deckKey=e.target.value;
 });
 async function flipCamera(){ facing=facing==='user'?'environment':'user'; $('videoWrap').classList.toggle('mirror',facing==='user'); if(running){ stopCamera(); await startCamera(); } }
 
