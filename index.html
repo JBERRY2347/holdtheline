@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d1220">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hold the Line">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Hold the Line — Bluffing Game</title>
+<style>
+:root{
+  --bg:#0d1220; --panel:#161d31; --panel2:#1d2640; --border:#2a3554;
+  --text:#e8edf8; --dim:#8c98b8; --accent:#4da3ff; --accent2:#7c5cff;
+  --good:#3ddc84; --warn:#ffb347; --bad:#ff5c7a;
+  --happy:#3ddc84; --sad:#5c8aff; --anger:#ff5c5c; --fear:#c95cff;
+  --surprise:#ffd24d; --disgust:#7ec850; --contempt:#ff9d5c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.45;overscroll-behavior:none}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(135deg,#131a2e,#1a1430);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
+header .logo{width:30px;height:30px;flex:none}
+header h1{font-size:17px;font-weight:700;letter-spacing:.3px}
+header h1 span{color:var(--accent)}
+header .status{margin-left:auto;font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px;text-align:right}
+.dot{width:8px;height:8px;border-radius:50%;background:#555;flex:none}
+.dot.on{background:var(--good);box-shadow:0 0 8px var(--good)}
+.dot.busy{background:var(--warn);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.4}}
+main{max-width:760px;margin:0 auto;padding:14px 12px 40px}
+.screen{display:none}
+.screen.active{display:block}
+.notice{background:rgba(77,163,255,.08);border:1px solid rgba(77,163,255,.3);border-radius:10px;padding:10px 12px;font-size:12.5px;color:#b8cdf0;margin-bottom:14px}
+.notice b{color:var(--text)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);font:inherit;font-size:13px;font-weight:600;padding:10px 14px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:linear-gradient(135deg,#2563eb,#7c3aed);border-color:transparent}
+.btn.good{border-color:var(--good);color:var(--good)}
+.btn.on{border-color:var(--good);color:var(--good)}
+.btn.rec{border-color:var(--warn);color:var(--warn)}
+.btn.bad{border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.block{display:flex;width:100%;justify-content:center}
+.controls{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
+.chip{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;display:inline-block}
+.chip.good{background:rgba(61,220,132,.15);color:var(--good)}
+.chip.warn{background:rgba(255,179,71,.15);color:var(--warn)}
+.chip.bad{background:rgba(255,92,122,.15);color:var(--bad)}
+.chip.info{background:rgba(77,163,255,.15);color:var(--accent)}
+.chip.mut{background:var(--panel2);color:var(--dim)}
+h3.t{font-size:16px;margin:2px 0 6px} p.lead{color:#c9d4ec;font-size:13.5px;margin-bottom:10px}
+label.fld{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:10px 0 4px}
+input.in,select.in,textarea.in{width:100%;background:#0b101e;border:1px solid var(--border);border-radius:10px;color:var(--text);font:inherit;font-size:14px;padding:10px 12px}
+input.in::placeholder,textarea.in::placeholder{color:#5a6685}
+/* mode cards */
+.modeCard{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+.modeCard:hover,.modeCard.sel{border-color:var(--accent)}
+.modeCard .body b{font-size:14.5px}
+.modeCard .body p{font-size:12.5px;color:var(--dim);margin-top:3px}
+/* stage / camera */
+.videoWrap{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3;border:1px solid var(--border)}
+.videoWrap.mirror video,.videoWrap.mirror canvas{transform:scaleX(-1)}
+video,#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#camMsg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dim);font-size:13px;text-align:center;padding:20px}
+#emoBanner{position:absolute;left:0;right:0;bottom:0;padding:7px 12px;background:linear-gradient(transparent,rgba(0,0,0,.7));display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px}
+#emoBanner .emoji{font-size:24px}
+.centerHint{position:absolute;top:8px;left:8px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(0,0,0,.55);border:1px solid var(--good);color:var(--good);z-index:2}
+/* floating mini-camera (picture-in-picture) so the speaker can self-center while scrolling */
+.miniCam{position:fixed;right:12px;bottom:16px;width:124px;z-index:60;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 8px 26px rgba(0,0,0,.55);background:#000;cursor:grab;touch-action:none;user-select:none}
+.miniCam:active{cursor:grabbing}
+.miniCam[hidden]{display:none}
+.miniCam canvas{display:block;width:100%;height:auto;pointer-events:none}
+.miniBadge{position:absolute;top:4px;left:4px;font-size:15px;background:rgba(0,0,0,.5);border-radius:8px;padding:0 4px;line-height:1.5;pointer-events:none}
+.miniClose{position:absolute;top:3px;right:3px;width:21px;height:21px;border:none;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:12px;line-height:21px;text-align:center;cursor:pointer;padding:0}
+.miniHint{position:absolute;bottom:0;left:0;right:0;font-size:9px;font-weight:600;text-align:center;background:rgba(0,0,0,.55);padding:2px 0;letter-spacing:.3px;pointer-events:none}
+.stageTop{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px;color:var(--dim)}
+.stageTop b{color:var(--text)}
+/* meter */
+.meterBox{margin:12px 0 4px}
+.meterHd{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);display:flex;justify-content:space-between}
+.meter{position:relative;height:18px;background:#0b101e;border-radius:9px;overflow:hidden;margin-top:6px}
+.meter .mfill{height:100%;width:3%;background:linear-gradient(90deg,var(--good),var(--warn) 55%,var(--bad));transition:width .18s linear}
+.meter .mtick{position:absolute;top:-2px;bottom:-2px;width:2px;background:rgba(255,255,255,.55)}
+.meterLbl{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);margin-top:3px}
+/* statement list */
+.stmt{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:11px 12px;margin-bottom:8px}
+.stmt.cur{border-color:var(--accent)}
+.stmt .top{display:flex;align-items:center;gap:8px}
+.stmt .top .n{font-size:11px;color:var(--dim);font-weight:700}
+.stmt .txt{font-size:14px;margin-top:2px}
+.pickable{cursor:pointer}
+.pickable.picked{border-color:var(--bad);box-shadow:inset 0 0 0 1px var(--bad)}
+.tellbar{height:8px;background:#0b101e;border-radius:4px;overflow:hidden;margin-top:7px}
+.tellbar .tf{height:100%;background:linear-gradient(90deg,var(--good),var(--warn) 55%,var(--bad))}
+.speakerRow{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.spk{font-size:12px;font-weight:600;padding:6px 11px;border-radius:9px;border:1px solid var(--border);background:var(--panel2);color:var(--dim);cursor:pointer}
+.spk.active{border-color:var(--accent);color:var(--accent)}
+.spk.done{color:var(--good);border-color:var(--good)}
+.gate{text-align:center;padding:18px 10px}
+.gate .big{font-size:38px}
+.scoreRow{display:flex;justify-content:space-between;align-items:center;background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:12px 14px;margin-bottom:8px;font-size:15px}
+.scoreRow.lead{border-color:var(--good)}
+.scoreRow b{font-size:22px}
+.delta{font-size:13px;font-weight:700}
+.delta.up{color:var(--good)} .delta.down{color:var(--bad)}
+footer{margin-top:18px;padding:10px;font-size:10.5px;color:var(--dim);text-align:center}
+footer a{color:var(--accent)}
+@media(max-width:430px){main{padding:12px 10px 34px}.card{padding:12px}}
+</style>
+</head>
+<body>
+<header>
+  <svg class="logo" viewBox="0 0 64 64"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4da3ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient></defs><rect x="8" y="8" width="48" height="48" rx="12" fill="none" stroke="url(#lg)" stroke-width="4"/><path d="M20 40 V24 M32 40 V20 M44 40 V28" stroke="url(#lg)" stroke-width="5" stroke-linecap="round"/></svg>
+  <h1>Hold the <span>Line</span></h1>
+  <div class="status"><span id="statusTxt">ready</span><span class="dot" id="statusDot"></span></div>
+</header>
+
+<main>
+<!-- ============ HOME ============ -->
+<section class="screen active" id="scr-home">
+  <div class="notice"><b>It's a game, not a lie detector.</b> The meter reads how <b>calm or expressive</b> you look — not whether you're telling the truth. A calm liar wins. Everyone on camera should be playing willingly.</div>
+  <h3 class="t">Pick a mode</h3>
+  <p class="lead">Two teams. The defending team keeps its planted lies calm while the other team watches the tells and calls them.</p>
+  <div id="modeCards"></div>
+  <footer>On-device only · nothing recorded or uploaded · <a href="privacy.html">Privacy</a></footer>
+</section>
+
+<!-- ============ SETUP ============ -->
+<section class="screen" id="scr-setup">
+  <button class="btn" data-act="goto" data-screen="home" style="margin-bottom:10px">‹ Back</button>
+  <div class="card">
+    <h2>Teams</h2>
+    <label class="fld">Team 1 name</label><input class="in" id="tA" maxlength="24" placeholder="Team A">
+    <label class="fld">Team 1 players (comma separated)</label><input class="in" id="pA" placeholder="Sam, Jordan, Alex">
+    <label class="fld" style="margin-top:16px">Team 2 name</label><input class="in" id="tB" maxlength="24" placeholder="Team B">
+    <label class="fld">Team 2 players (comma separated)</label><input class="in" id="pB" placeholder="Riley, Casey">
+  </div>
+  <div class="card">
+    <h2>Match settings</h2>
+    <label class="fld">Statement deck</label><select class="in" id="deck"></select>
+    <label class="fld" style="margin-top:12px">Play to</label>
+    <select class="in" id="target"><option value="10">10 points (short)</option><option value="15" selected>15 points</option><option value="20">20 points (long)</option></select>
+    <div id="modeSummary" style="font-size:12.5px;color:var(--dim);margin-top:12px"></div>
+  </div>
+  <button class="btn primary block" data-act="start">▶ Start match</button>
+</section>
+
+<!-- ============ STAGE (calibrate / dossier / interrogate) ============ -->
+<section class="screen" id="scr-stage">
+  <div class="stageTop" id="stageTop"></div>
+  <div class="videoWrap mirror" id="videoWrap">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div id="camMsg"><div style="font-size:34px">📷</div><div>Starting camera…<br>First load downloads the face model (~3&nbsp;MB).</div></div>
+    <div id="emoBanner"><span class="emoji" id="emoEmoji">😐</span><span id="emoName">Composed</span></div>
+    <div id="centerHint" class="centerHint">centering…</div>
+  </div>
+  <div class="meterBox">
+    <div class="meterHd"><span>Composure / tells</span><span id="meterVal">—</span></div>
+    <div class="meter"><div class="mfill" id="meterFill"></div><div class="mtick" id="meterTick" style="left:55%"></div></div>
+    <div class="meterLbl"><span>composed</span><span>← keep it left to win →</span><span>tell!</span></div>
+  </div>
+  <div class="controls">
+    <button class="btn" data-act="mic" id="btnMic">🎙 Mic off</button>
+    <button class="btn" data-act="flip" id="btnFlip">🔄 Flip</button>
+  </div>
+  <div id="stagePanel"></div>
+</section>
+
+<!-- ============ CALL ============ -->
+<section class="screen" id="scr-call"><div id="callBody"></div></section>
+<!-- ============ REVEAL ============ -->
+<section class="screen" id="scr-reveal"><div id="revealBody"></div></section>
+<!-- ============ SCOREBOARD ============ -->
+<section class="screen" id="scr-scoreboard"><div id="scoreBody"></div></section>
+<!-- ============ END ============ -->
+<section class="screen" id="scr-end"><div id="endBody"></div></section>
+</main>
+
+<!-- floating self-view: appears when the main camera scrolls off, so the active player can keep themselves centered -->
+<div id="miniCam" class="miniCam" hidden>
+  <canvas id="miniCanvas" width="180" height="135"></canvas>
+  <div class="miniBadge" id="miniBadge">🙂</div>
+  <button class="miniClose" id="miniClose" aria-label="Hide mini camera">✕</button>
+  <div class="miniHint" id="miniHint">centering…</div>
+</div>
+
+<script type="module">
+/* =================================================================
+   ENGINE  — ported from CueSight (on-device MediaPipe analyzer).
+   Produces (a) a live per-frame deviation -> composure/tell meter and
+   (b) a per-answer 0-100 tell score. No ML is new here.
+   ================================================================= */
+const $=id=>document.getElementById(id);
+const EMOTIONS=[
+ {key:'happiness',label:'Happiness',emoji:'😊'},{key:'sadness',label:'Sadness',emoji:'😢'},
+ {key:'anger',label:'Anger',emoji:'😠'},{key:'fear',label:'Fear',emoji:'😨'},
+ {key:'surprise',label:'Surprise',emoji:'😲'},{key:'disgust',label:'Disgust',emoji:'🤢'},
+ {key:'contempt',label:'Contempt',emoji:'😏'},
+];
+let smooth={}; EMOTIONS.forEach(e=>smooth[e.key]=0);
+let faceLandmarker=null, drawingUtils=null, DrawingUtilsCls=null, FaceLandmarkerCls=null;
+let stream=null, running=false, facing='user', lastVideoTime=-1, uiTick=0;
+let baseline=null, calib=null;
+function setStatus(txt,mode){ const t=$('statusTxt'),d=$('statusDot'); if(t)t.textContent=txt; if(d)d.className='dot'+(mode?' '+mode:''); }
+
+function computeEmotions(b){
+  const A=(...n)=>n.reduce((s,k)=>s+(b[k]||0),0)/n.length;
+  const C=v=>Math.max(0,Math.min(1,v));
+  const smile=A('mouthSmileLeft','mouthSmileRight');
+  const cheek=A('cheekSquintLeft','cheekSquintRight');
+  const browDown=A('browDownLeft','browDownRight');
+  const browOuterUp=A('browOuterUpLeft','browOuterUpRight');
+  const innerUp=b.browInnerUp||0;
+  const eyeWide=A('eyeWideLeft','eyeWideRight');
+  const eyeSquint=A('eyeSquintLeft','eyeSquintRight');
+  const frown=A('mouthFrownLeft','mouthFrownRight');
+  const stretch=A('mouthStretchLeft','mouthStretchRight');
+  const press=A('mouthPressLeft','mouthPressRight');
+  const sneer=A('noseSneerLeft','noseSneerRight');
+  const upperUp=A('mouthUpperUpLeft','mouthUpperUpRight');
+  const jaw=b.jawOpen||0;
+  const sL=b.mouthSmileLeft||0, sR=b.mouthSmileRight||0;
+  const asym=Math.abs(sL-sR);
+  const contemptGate=(Math.max(sL,sR)>0.18 && Math.min(sL,sR)<0.12)?1:0;
+  return {
+    happiness:C(smile*1.15 - browDown*0.3),
+    sadness:C(innerUp*0.75 + frown*1.4 + (b.mouthShrugLower||0)*0.4 + (b.eyeLookDownLeft||0)*0.15 + (b.eyeLookDownRight||0)*0.15 - smile*0.8 - eyeWide*0.3),
+    anger:C(browDown*0.95 + eyeSquint*0.2 + press*0.35 + (b.jawForward||0)*0.15 - smile*0.7 - jaw*0.25 - innerUp*0.3),
+    fear:C(eyeWide*0.5 + innerUp*0.35 + browOuterUp*0.2 + stretch*0.5 - smile*0.6 - jaw*0.3),
+    surprise:C(eyeWide*0.4 + browOuterUp*0.45 + innerUp*0.15 + jaw*0.45 - smile*0.4 - stretch*0.3),
+    disgust:C(sneer*1.0 + upperUp*0.45 + browDown*0.1 - smile*0.5),
+    contempt:C(((asym-0.05)*4)*contemptGate - jaw*0.3),
+    _smile:smile,_cheek:cheek,_press:press,_roll:A('mouthRollLower','mouthRollUpper'),
+  };
+}
+
+/* ---- cue tracking ---- */
+const blinkTimes=[]; let blinkClosed=false;
+const gazeSamples=[]; let lipEMA=0;
+const flashState={}; EMOTIONS.forEach(e=>flashState[e.key]={active:false,onset:0,peak:0,img:null});
+let flashes=[];
+const au20={active:false,onset:0,peak:0,peakT:0,events:[]};
+function trackAU20(b,now){
+  const v=((b.mouthStretchLeft||0)+(b.mouthStretchRight||0))/2;
+  if(!au20.active && v>0.25){ au20.active=true; au20.onset=now; au20.peak=v; au20.peakT=now; }
+  else if(au20.active){
+    if(v>au20.peak){ au20.peak=v; au20.peakT=now; }
+    if(v<0.12){
+      au20.active=false; const dur=now-au20.onset;
+      if(dur>40 && dur<5000) au20.events.push({t:au20.onset,dur,p2o:now-au20.peakT,peak:au20.peak});
+      while(au20.events.length && now-au20.events[0].t>180000) au20.events.shift();
+    }
+  }
+}
+function trackCues(raw,b,now){
+  const blink=((b.eyeBlinkLeft||0)+(b.eyeBlinkRight||0))/2;
+  if(blink>0.55 && !blinkClosed){ blinkClosed=true; blinkTimes.push(now); }
+  else if(blink<0.35) blinkClosed=false;
+  while(blinkTimes.length && now-blinkTimes[0]>60000) blinkTimes.shift();
+  const A=(...n)=>n.reduce((s,k)=>s+(b[k]||0),0)/n.length;
+  const off=Math.max(A('eyeLookUpLeft','eyeLookUpRight'),A('eyeLookDownLeft','eyeLookDownRight'),
+                     A('eyeLookOutLeft','eyeLookInRight'),A('eyeLookInLeft','eyeLookOutRight'));
+  gazeSamples.push({t:now,off:off>0.45});
+  while(gazeSamples.length && now-gazeSamples[0].t>30000) gazeSamples.shift();
+  const lip=Math.max(raw._press, raw._roll);
+  lipEMA=lipEMA*0.92+lip*0.08;
+  trackAU20(b,now);
+  for(const e of EMOTIONS){
+    const s=raw[e.key], st=flashState[e.key];
+    const prevailing=dominantKey();
+    if(!st.active && s>0.42 && prevailing!==e.key){ st.active=true; st.onset=now; st.peak=s; st.img=snapshot(); }
+    else if(st.active){
+      if(s>st.peak){ st.peak=s; st.img=snapshot(); }
+      if(s<0.22){ const dur=now-st.onset; st.active=false; if(dur>=40 && dur<=500) addFlash(e,st.peak,dur,st.img); st.img=null; }
+      else if(now-st.onset>1200){ st.active=false; st.img=null; }
+    }
+  }
+}
+function dominantKey(){ let best=null,bv=0.22; for(const e of EMOTIONS) if(smooth[e.key]>bv){bv=smooth[e.key];best=e.key;} return best; }
+const snapCanvas=document.createElement('canvas');
+function snapshot(){
+  const v=$('video'); if(!v||!v.videoWidth) return null;
+  snapCanvas.width=160; snapCanvas.height=120;
+  const c=snapCanvas.getContext('2d');
+  if(facing==='user'){ c.save(); c.translate(160,0); c.scale(-1,1); c.drawImage(v,0,0,160,120); c.restore(); }
+  else c.drawImage(v,0,0,160,120);
+  return snapCanvas.toDataURL('image/jpeg',0.7);
+}
+function addFlash(e,peak,dur,img){ if(qmode.active) qmode.flashes.push({e:e.key,peak,img}); flashes.unshift({e:e.key,peak,dur,img,t:Date.now()}); if(flashes.length>30) flashes.pop(); }
+
+/* ---- sounds ---- */
+let soundOn=true, beepCtx=null;
+function beep(kind){
+  if(!soundOn) return;
+  try{
+    beepCtx=beepCtx||new (window.AudioContext||window.webkitAudioContext)();
+    if(beepCtx.state==='suspended') beepCtx.resume();
+    const t=beepCtx.currentTime;
+    const tone=(f,st,dur,type='sine',g=0.12)=>{
+      const o=beepCtx.createOscillator(), ga=beepCtx.createGain();
+      o.type=type; o.frequency.value=f; o.connect(ga); ga.connect(beepCtx.destination);
+      ga.gain.setValueAtTime(0.0001,t+st); ga.gain.linearRampToValueAtTime(g,t+st+0.02);
+      ga.gain.exponentialRampToValueAtTime(0.0001,t+st+dur);
+      o.start(t+st); o.stop(t+st+dur+0.06);
+    };
+    if(kind==='good'){ tone(660,0,0.14); tone(990,0.15,0.22); }
+    else if(kind==='warn'){ tone(420,0,0.18); }
+    else if(kind==='bad'){ tone(180,0,0.26,'sawtooth',0.2); tone(140,0.3,0.32,'sawtooth',0.2); }
+    else if(kind==='tick'){ tone(880,0,0.05,'sine',0.08); }
+  }catch(e){}
+}
+
+/* ---- windowed capture + feature scoring ---- */
+const qmode={active:false,mode:null,start:0,label:'',blinkMark:0,gazeOff:0,gazeN:0,lip:0,lipN:0,
+  flashes:[],pitch:[],speechMs:0,pauseMs:0,latency:null,socialSmile:0,smileN:0,
+  browL:[],browR:[],au20Sum:0,fearSum:0,sampN:0};
+const avgA=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const stdA=a=>{const m=avgA(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/a.length);};
+const FEAT_META={fleet:'Fleeting fear (AU20)',fearAmp:'Fear AU intensity',asym:'L/R asymmetry',
+  blink:'Blink rate',gaze:'Gaze aversion',lip:'Lip compression',mask:'Masking smile',
+  leaks:'Negative leaks',pitch:'Voice pitch',latency:'Response latency',hes:'Hesitation'};
+function startWindow(mode){
+  Object.assign(qmode,{active:true,mode,start:performance.now(),
+    blinkMark:blinkTimes.length,gazeOff:0,gazeN:0,lip:0,lipN:0,
+    flashes:[],pitch:[],speechMs:0,pauseMs:0,latency:null,socialSmile:0,smileN:0,
+    browL:[],browR:[],au20Sum:0,fearSum:0,sampN:0});
+}
+function qmodeSample(raw,b,now){
+  const A=(...n)=>n.reduce((s,k)=>s+(b[k]||0),0)/n.length;
+  const off=Math.max(A('eyeLookUpLeft','eyeLookUpRight'),A('eyeLookDownLeft','eyeLookDownRight'),
+                     A('eyeLookOutLeft','eyeLookInRight'),A('eyeLookInLeft','eyeLookOutRight'));
+  qmode.gazeN++; if(off>0.45) qmode.gazeOff++;
+  qmode.lip+=Math.max(raw._press,raw._roll); qmode.lipN++;
+  if(raw.happiness>0.3){ qmode.smileN++; if(raw._cheek<0.25) qmode.socialSmile++; }
+  qmode.browL.push(b.browOuterUpLeft||0); qmode.browR.push(b.browOuterUpRight||0);
+  const au20v=((b.mouthStretchLeft||0)+(b.mouthStretchRight||0))/2;
+  qmode.au20Sum+=au20v;
+  qmode.fearSum+=((b.browInnerUp||0)+A('browOuterUpLeft','browOuterUpRight')+A('browDownLeft','browDownRight')
+    +A('eyeWideLeft','eyeWideRight')+A('eyeSquintLeft','eyeSquintRight')+au20v+(b.jawOpen||0))/7;
+  qmode.sampN++;
+}
+function pearson(x,y){
+  const n=Math.min(x.length,y.length); if(n<20) return null;
+  let mx=0,my=0; for(let i=0;i<n;i++){mx+=x[i];my+=y[i];} mx/=n; my/=n;
+  let sxy=0,sx=0,sy=0;
+  for(let i=0;i<n;i++){const a=x[i]-mx,c=y[i]-my; sxy+=a*c; sx+=a*a; sy+=c*c;}
+  if(sx<1e-4||sy<1e-4) return null;
+  return sxy/Math.sqrt(sx*sy);
+}
+function computeFeatures(){
+  const C=v=>Math.max(0,Math.min(1,v));
+  const dur=Math.max((performance.now()-qmode.start)/1000,3);
+  const f={};
+  f.blink=Math.round((blinkTimes.length-qmode.blinkMark)*60/dur);
+  f.gaze=qmode.gazeN?100*qmode.gazeOff/qmode.gazeN:0;
+  f.lip=qmode.lipN?qmode.lip/qmode.lipN:0;
+  f.leaks=qmode.flashes.filter(x=>['fear','contempt','disgust','anger','sadness'].includes(x.e)).length;
+  f.mask=qmode.smileN>5?qmode.socialSmile/qmode.smileN:null;
+  const evs=au20.events.filter(e=>e.t>=qmode.start);
+  if(evs.length){
+    const durs=evs.map(e=>e.dur).sort((a,b)=>a-b);
+    const med=durs[durs.length>>1];
+    f.fleet=C(0.65*(evs.filter(e=>e.dur<=500).length/evs.length)+0.35*C((450-med)/350));
+    f.au20n=evs.length;
+  }else{ f.fleet=null; f.au20n=0; }
+  f.fearAmp=qmode.sampN?qmode.fearSum/qmode.sampN:null;
+  const r=pearson(qmode.browL,qmode.browR);
+  f.asym=r===null?null:C(1-r);
+  if(voice.on){
+    f.pitch=median(qmode.pitch)||null; f.latency=qmode.latency;
+    const tot=qmode.speechMs+qmode.pauseMs; f.hes=tot>2000?qmode.pauseMs/tot:null;
+  }else{ f.pitch=null; f.latency=null; f.hes=null; }
+  return f;
+}
+function genericCues(f){
+  const C=v=>Math.max(0,Math.min(1,v));
+  const cues=[];
+  const bBase=baseline?baseline.blink:18, gBase=baseline?baseline.gaze:15;
+  if(f.fleet!==null) cues.push({k:'Fleeting fear (AU20)',v:`${f.au20n} burst${f.au20n>1?'s':''}`,s:f.fleet,w:0.2});
+  if(f.asym!==null){
+    const aBase=(baseline&&baseline.asym!=null)?baseline.asym:0.19;
+    cues.push({k:'L/R asymmetry',v:`${Math.round(f.asym*100)}% vs ${Math.round(aBase*100)}%`,s:C((f.asym-aBase)/0.25),w:0.15});
+  }
+  cues.push({k:'Concealment flashes',v:f.leaks?qmode.flashes.filter(x=>['fear','contempt','disgust','anger','sadness'].includes(x.e)).map(x=>EMOTIONS.find(y=>y.key===x.e).emoji).join(' '):'none',s:C(f.leaks/2),w:0.15});
+  cues.push({k:'Blink rate',v:`${f.blink}/min vs ${bBase}`,s:C((f.blink-bBase)/Math.max(bBase,8)),w:0.1});
+  cues.push({k:'Gaze aversion',v:`${Math.round(f.gaze)}% vs ${gBase}%`,s:C((f.gaze-gBase)/40),w:0.07});
+  cues.push({k:'Lip compression',v:Math.round(f.lip*100)+'%',s:C((f.lip-(baseline?baseline.lip:0.06))*3),w:0.09});
+  if(f.mask!==null) cues.push({k:'Masking smile',v:Math.round(f.mask*100)+'% non-genuine',s:C(f.mask),w:0.06});
+  if(voice.on){
+    const pBase=baseline?baseline.pitch:0;
+    cues.push({k:'Pitch elevation',v:f.pitch?Math.round(f.pitch)+' Hz':'no speech',s:(pBase&&f.pitch)?C((f.pitch/pBase-1)*5):0,w:0.08});
+    if(f.hes!==null) cues.push({k:'Hesitation',v:Math.round(f.hes*100)+'%',s:C((f.hes-0.15)*2.5),w:0.05});
+  }
+  return cues;
+}
+function calibCompare(f){
+  if(!calib||!calib.truth||calib.truth.length<2||!calib.lie||calib.lie.length<2) return null;
+  let vt=0,vl=0; const rows=[];
+  for(const k of Object.keys(FEAT_META)){
+    if(f[k]===null||f[k]===undefined) continue;
+    const tv=calib.truth.map(x=>x[k]).filter(v=>v!==null&&v!==undefined);
+    const lv=calib.lie.map(x=>x[k]).filter(v=>v!==null&&v!==undefined);
+    if(tv.length<2||lv.length<2) continue;
+    const tm=avgA(tv), lm=avgA(lv);
+    const noise=(stdA(tv)+stdA(lv))/2+1e-6; const sep=Math.abs(tm-lm);
+    if(sep<noise*0.7) continue;
+    const w=Math.min(2,sep/noise);
+    if(Math.abs(f[k]-lm)<Math.abs(f[k]-tm)) vl+=w; else vt+=w;
+    rows.push({k:FEAT_META[k],w});
+  }
+  if(vt+vl<1) return null;
+  return {p:vl/(vt+vl),rows};
+}
+/* the per-answer 0-100 tell score (factored from CueSight scoreQuestion) */
+function scoreFeatures(f){
+  const cues=genericCues(f);
+  let s=0,w=0; cues.forEach(c=>{s+=c.s*c.w; w+=c.w;});
+  let pct=Math.round(100*s/Math.max(w,0.01));
+  const cmp=calibCompare(f);
+  if(cmp) pct=Math.round(100*(0.55*cmp.p+0.45*(pct/100)));
+  return {pct:Math.max(0,Math.min(100,pct)),cues};
+}
+
+/* ---- camera + loop ---- */
+const WASM_URL='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL_URL='https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+let visionMod=null, lastTs=0, loopErrors=0, cpuMode=false, reinitializing=false, watchdog=null;
+async function makeLandmarker(delegate){
+  const resolver=await visionMod.FilesetResolver.forVisionTasks(WASM_URL);
+  return visionMod.FaceLandmarker.createFromOptions(resolver,{
+    baseOptions:{modelAssetPath:MODEL_URL,delegate}, outputFaceBlendshapes:true, runningMode:'VIDEO', numFaces:1 });
+}
+async function loadModel(){
+  if(faceLandmarker) return;
+  setStatus('loading model…','busy');
+  visionMod=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+  FaceLandmarkerCls=visionMod.FaceLandmarker; DrawingUtilsCls=visionMod.DrawingUtils;
+  faceLandmarker=await makeLandmarker('GPU');
+}
+async function gpuFallback(){
+  if(reinitializing||cpuMode) return;
+  reinitializing=true; cpuMode=true; setStatus('switching to CPU…','busy');
+  try{ faceLandmarker=await makeLandmarker('CPU'); loopErrors=0; setStatus('reading (CPU)','on'); }
+  catch(e){ setStatus('model error'); running=false; }
+  reinitializing=false;
+}
+async function startCamera(){
+  if(running) return;
+  try{
+    await loadModel();
+    setStatus('starting camera…','busy');
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1280},height:{ideal:960}},audio:false});
+    const v=$('video'); v.srcObject=stream; await v.play();
+    $('overlay').width=v.videoWidth; $('overlay').height=v.videoHeight;
+    drawingUtils=new DrawingUtilsCls($('overlay').getContext('2d'));
+    const cm=$('camMsg'); if(cm) cm.style.display='none';
+    v.onpause=()=>{ if(running) v.play().catch(()=>{}); };
+    stream.getVideoTracks()[0].addEventListener('ended',()=>{ if(running) stopCamera(); });
+    clearInterval(watchdog);
+    watchdog=setInterval(()=>{ if(running && v.paused) v.play().catch(()=>{}); },2000);
+    running=true; setStatus(cpuMode?'reading (CPU)':'reading','on');
+    miniDismissed=false; reevalMini();
+    requestAnimationFrame(loop);
+  }catch(err){
+    setStatus('camera error');
+    const cm=$('camMsg'); if(cm){ cm.style.display='flex'; cm.innerHTML=`<div style="font-size:34px">🚫</div><div><b>Camera failed:</b> ${err.message}<br><span style="font-size:11.5px">Camera needs HTTPS (or localhost) and permission.</span></div>`; }
+  }
+}
+function stopCamera(){
+  running=false; clearInterval(watchdog);
+  if(qmode.active){ qmode.active=false; clearInterval(answerTimer); answerTimer=null; }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  const ov=$('overlay'); if(ov) ov.getContext('2d').clearRect(0,0,ov.width,ov.height);
+  const cm=$('camMsg'); if(cm) cm.style.display='flex';
+  setMini(false); miniDismissed=false;
+  setStatus('paused');
+}
+function loop(){
+  if(!running) return;
+  const v=$('video');
+  if(!reinitializing && v && v.readyState>=2 && v.currentTime!==lastVideoTime){
+    lastVideoTime=v.currentTime;
+    try{
+      lastTs=Math.max(lastTs+1,performance.now());
+      const res=faceLandmarker.detectForVideo(v,lastTs);
+      loopErrors=0;
+      const ctx=$('overlay').getContext('2d');
+      ctx.clearRect(0,0,$('overlay').width,$('overlay').height);
+      if(res.faceLandmarks && res.faceLandmarks.length){
+        const lm=res.faceLandmarks[0];
+        drawingUtils.drawConnectors(lm,FaceLandmarkerCls.FACE_LANDMARKS_FACE_OVAL,{color:'rgba(77,163,255,.4)',lineWidth:2});
+        drawingUtils.drawConnectors(lm,FaceLandmarkerCls.FACE_LANDMARKS_LIPS,{color:'rgba(124,92,255,.5)',lineWidth:1.5});
+        const cats=res.faceBlendshapes?.[0]?.categories;
+        if(cats){
+          const b={}; cats.forEach(c=>b[c.categoryName]=c.score);
+          const raw=computeEmotions(b); const now=performance.now();
+          for(const e of EMOTIONS) smooth[e.key]=smooth[e.key]*0.7+raw[e.key]*0.3;
+          trackCues(raw,b,now);
+          if(qmode.active) qmodeSample(raw,b,now);
+          gameOnFrame(raw,b,now);
+        }
+        updateCenterUI(lm); drawMini(lm);
+      }else{
+        const en=$('emoName'),ee=$('emoEmoji'); if(en){en.textContent='No face';} if(ee){ee.textContent='👤';}
+        updateCenterUI(null); drawMini(null);
+      }
+    }catch(err){ if(++loopErrors===1) console.warn('HTL frame error:',err); if(loopErrors>8) gpuFallback(); }
+  }
+  requestAnimationFrame(loop);
+}
+function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);return s[s.length>>1];}
+function deviationPct(bpm,gp){
+  if(!baseline) return null;
+  const C=v=>Math.max(0,Math.min(1,v));
+  let d=0;
+  d+=C((bpm-baseline.blink)/Math.max(baseline.blink,5))*0.28;
+  d+=C((gp-baseline.gaze)/50)*0.22;
+  d+=C((lipEMA-baseline.lip)*2.5)*0.25;
+  if(baseline.pitch&&voice.pitchMed) d+=C((voice.pitchMed/baseline.pitch-1)*4)*0.25;
+  return Math.round(C(d)*100);
+}
+/* live composure 0-100; uses baseline deviation, or a raw-expressiveness proxy without one */
+function liveComposure(bpm,gp){
+  const d=deviationPct(bpm,gp);
+  if(d!==null) return d;
+  let p=0; for(const e of EMOTIONS) p=Math.max(p,smooth[e.key]);
+  return Math.round(Math.min(1,p*0.85+lipEMA*1.6)*100);
+}
+
+/* ---- centering guide + floating self-view (so the speaker stays framed) ---- */
+function noseOffset(lm){ if(!lm||!lm.length||!lm[1]) return null; return Math.max(Math.abs(lm[1].x-0.5),Math.abs(lm[1].y-0.5)); }
+function updateCenterUI(lm){
+  const h=$('centerHint'); if(!h) return;
+  const off=noseOffset(lm); let txt,col;
+  if(off===null){ txt='no face'; col='var(--bad)'; }
+  else if(off<0.16){ txt='centered ✓'; col='var(--good)'; }
+  else if(off<0.30){ txt='almost — recenter'; col='var(--warn)'; }
+  else { txt='move to center'; col='var(--bad)'; }
+  h.textContent=txt; h.style.color=col; h.style.borderColor=col;
+}
+let miniVisible=false, miniDismissed=false, lastMiniState='';
+const miniCam=$('miniCam');
+function setMini(show){ show=show&&running&&!miniDismissed; if(show===miniVisible) return; miniVisible=show; if(miniCam) miniCam.hidden=!show; }
+function reevalMini(){
+  if(!running){ setMini(false); return; }
+  const stageActive=$('scr-stage').classList.contains('active');
+  const r=$('videoWrap').getBoundingClientRect();
+  setMini(!(stageActive && r.bottom>90 && r.top<(window.innerHeight-90)));
+}
+function drawMini(lm){
+  if(!miniVisible||!miniCam) return;
+  const v=$('video'); if(!v||!v.videoWidth) return;
+  const cv=$('miniCanvas'), c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  if(facing==='user'){ c.save(); c.translate(W,0); c.scale(-1,1); c.drawImage(v,0,0,W,H); c.restore(); }
+  else c.drawImage(v,0,0,W,H);
+  let color='#ff5c7a', state='no face';
+  if(lm&&lm.length&&lm[1]){
+    const nx=lm[1].x, ny=lm[1].y, off=Math.max(Math.abs(nx-0.5),Math.abs(ny-0.5));
+    if(off<0.16){ color='#3ddc84'; state='centered ✓'; }
+    else if(off<0.30){ color='#ffb347'; state='almost — recenter'; }
+    else { color='#ff5c7a'; state='move to center'; }
+    const fx=(facing==='user'?(1-nx):nx)*W, fy=ny*H;
+    c.beginPath(); c.arc(fx,fy,4,0,7); c.fillStyle=color; c.fill();
+  }
+  c.strokeStyle=color; c.lineWidth=2;
+  c.beginPath(); c.arc(W/2,H/2,Math.min(W,H)*0.30,0,7); c.stroke();
+  c.beginPath(); c.moveTo(W/2-7,H/2); c.lineTo(W/2+7,H/2); c.moveTo(W/2,H/2-7); c.lineTo(W/2,H/2+7); c.stroke();
+  if(state!==lastMiniState){ lastMiniState=state; const h=$('miniHint'); if(h){ h.textContent=state; h.style.color=color; } }
+}
+function returnToCam(){ const w=$('videoWrap'); if(w) w.scrollIntoView({behavior:'smooth',block:'start'}); }
+if(miniCam){
+  new IntersectionObserver(es=>{ if(running) setMini(!es[0].isIntersecting); },{threshold:0.4}).observe($('videoWrap'));
+  window.addEventListener('scroll',()=>{ if(running) reevalMini(); },{passive:true});
+  let mdrag=null;
+  miniCam.addEventListener('pointerdown',e=>{ if(e.target===$('miniClose')) return; mdrag={sx:e.clientX,sy:e.clientY,ol:miniCam.offsetLeft,ot:miniCam.offsetTop,moved:false}; miniCam.setPointerCapture(e.pointerId); });
+  miniCam.addEventListener('pointermove',e=>{ if(!mdrag) return; const dx=e.clientX-mdrag.sx, dy=e.clientY-mdrag.sy; if(Math.abs(dx)>5||Math.abs(dy)>5) mdrag.moved=true;
+    miniCam.style.left=Math.max(6,Math.min(window.innerWidth-miniCam.offsetWidth-6,mdrag.ol+dx))+'px';
+    miniCam.style.top=Math.max(6,Math.min(window.innerHeight-miniCam.offsetHeight-6,mdrag.ot+dy))+'px';
+    miniCam.style.right='auto'; miniCam.style.bottom='auto'; });
+  miniCam.addEventListener('pointerup',e=>{ if(!mdrag) return; const moved=mdrag.moved; mdrag=null; if(!moved) returnToCam(); });
+  $('miniClose').onclick=e=>{ e.stopPropagation(); miniDismissed=true; setMini(false); };
+}
+
+/* ---- voice (optional pitch / hesitation cues) ---- */
+const voice={on:false,ctx:null,analyser:null,buf:null,stream:null,pitch:0,pitchMed:0,hist:[],
+  speaking:false,lastSpeech:0,pauseStart:0,speechMs:0,pauseMs:0,winStart:0};
+async function toggleMic(){
+  if(voice.on){
+    voice.on=false; if(voice.ctx){voice.ctx.close();voice.ctx=null;}
+    if(voice.stream){voice.stream.getTracks().forEach(t=>t.stop());voice.stream=null;}
+    const b=$('btnMic'); if(b){b.textContent='🎙 Mic off'; b.classList.remove('on');} return;
+  }
+  try{
+    voice.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false},video:false});
+    voice.ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const src=voice.ctx.createMediaStreamSource(voice.stream);
+    voice.analyser=voice.ctx.createAnalyser(); voice.analyser.fftSize=2048;
+    src.connect(voice.analyser); voice.buf=new Float32Array(2048);
+    voice.on=true; voice.winStart=performance.now(); voice.speechMs=0; voice.pauseMs=0;
+    const b=$('btnMic'); if(b){b.textContent='🎙 Mic on'; b.classList.add('on');}
+    voiceLoop();
+  }catch(err){ alert('Mic failed: '+err.message); }
+}
+function voiceLoop(){
+  if(!voice.on) return;
+  voice.analyser.getFloatTimeDomainData(voice.buf);
+  const sr=voice.ctx.sampleRate, buf=voice.buf, N=buf.length;
+  let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
+  const now=performance.now();
+  voice.pitch=0;
+  if(rms>0.015){
+    let energy=0; for(let i=0;i<N;i++) energy+=buf[i]*buf[i];
+    const minLag=Math.floor(sr/380), maxLag=Math.floor(sr/70);
+    let best=0,bestLag=0;
+    for(let lag=minLag;lag<=maxLag;lag++){ let c=0; for(let i=0;i<N-lag;i++) c+=buf[i]*buf[i+lag]; if(c>best){best=c;bestLag=lag;} }
+    if(bestLag && best/energy>0.3){ voice.pitch=sr/bestLag; voice.hist.push({t:now,p:voice.pitch}); }
+  }
+  while(voice.hist.length && now-voice.hist[0].t>5000) voice.hist.shift();
+  voice.pitchMed=median(voice.hist.map(h=>h.p));
+  const speakingNow=rms>0.015;
+  if(speakingNow){
+    if(!voice.speaking && voice.pauseStart && now-voice.pauseStart<3000 && now-voice.pauseStart>600) voice.pauseMs+=now-voice.pauseStart;
+    voice.speaking=true; voice.lastSpeech=now; voice.speechMs+=100;
+  }else if(voice.speaking){ voice.speaking=false; voice.pauseStart=now; }
+  if(qmode.active){
+    if(speakingNow){ if(qmode.latency===null) qmode.latency=now-qmode.start; qmode.speechMs+=100; }
+    else if(qmode.latency!==null) qmode.pauseMs+=100;
+    if(voice.pitch>0) qmode.pitch.push(voice.pitch);
+  }
+  if(now-voice.winStart>60000){ voice.speechMs*=0.5; voice.pauseMs*=0.5; voice.winStart=now; }
+  setTimeout(voiceLoop,100);
+}
+
+/* =================================================================
+   GAME LAYER  — orchestration over the engine.
+   `match` is the single serializable state object; `reduce(match,ev)`
+   is the only place state changes (no DOM). A future networking layer
+   would sync `match` and relay events through `dispatch` — that is the
+   only seam it needs to touch. Engine side-effects (camera, timers)
+   live in dispatch()/the click handlers, never in reduce().
+   ================================================================= */
+const MODES={
+ holdtheline:{label:'Hold the Line',tag:'Core',blurb:'Defend a dossier of claims. Keep your planted lies calm; the other team calls the ones they think are lies.',statements:5,lies:2,answerSecs:18,tellThreshold:55,guesses:'multi',coop:false,wager:false,meterReset:'round'},
+ relay:{label:'Pass the Pressure',tag:'Relay',blurb:'Tag a teammate in mid-round. The meter re-anchors to whoever is in the chair — pick who delivers the riskiest lie.',statements:5,lies:2,answerSecs:16,tellThreshold:55,guesses:'multi',coop:false,wager:false,meterReset:'speaker'},
+ twotruths:{label:'Two Truths · One Cover',tag:'Quick',blurb:'Three claims, one is a cover lie. Interrogators get a single guess. Fast rounds.',statements:3,lies:1,answerSecs:14,tellThreshold:55,guesses:'single',coop:false,wager:false,meterReset:'round'},
+ heist:{label:'The Heist',tag:'Co-op',blurb:'Both teams together keep every cover story under the warden’s threshold. Beat the meter, not each other.',statements:6,lies:3,answerSecs:16,tellThreshold:55,guesses:'none',coop:true,wager:false,meterReset:'speaker'},
+ auction:{label:'The Auction',tag:'Risk',blurb:'Interrogators wager points before they call. Read it right and clean up — read it wrong and pay.',statements:5,lies:2,answerSecs:18,tellThreshold:55,guesses:'multi',coop:false,wager:true,meterReset:'round'},
+};
+const DECKS={
+ party:{label:'Party',prompts:['Describe what you ate for breakfast today.','Tell us about your last vacation.','What did you do last Friday night?','Describe the last gift you gave someone.','Walk us through your morning routine.','Tell us about a pet you’ve had.','Describe your childhood bedroom.','What’s the last movie you watched, and the plot?','Tell us about your first job.','Describe your best friend.']},
+ spy:{label:'Spy',prompts:['State your real name and where you were born.','Where were you at 0300 last night?','Describe the contents of the briefcase.','Who is your handler?','Explain how you crossed the border.','What was the password you were given?','Describe the safe house.','Who did you meet at the cafe?','What is your cover story for tonight?','Where did you hide the documents?']},
+ courtroom:{label:'Courtroom',prompts:['Where were you on the night in question?','Describe your relationship with the defendant.','What did you see when you entered the room?','Account for the missing hour.','Whose car was in the driveway?','What was said during the phone call?','Describe the object you were holding.','Who else knew about the plan?','Explain the stain on your jacket.','What time did you leave?']},
+ scifi:{label:'Sci-fi',prompts:['Describe your home planet.','What happened to the rest of your crew?','Explain the malfunction in the cargo bay.','Who authorized the jump to lightspeed?','Describe the creature you encountered.','What is inside the sealed container?','Where did you acquire the artifact?','Account for the missing fuel cells.','Who tampered with the airlock?','Describe the signal you received.']},
+};
+function buildDossier(cfg,deckKey){
+  const pool=[...DECKS[deckKey].prompts].sort(()=>Math.random()-0.5).slice(0,cfg.statements);
+  const order=[...pool.keys()].sort(()=>Math.random()-0.5);
+  const lie=new Set(order.slice(0,cfg.lies));
+  return pool.map((text,i)=>({text,protected:lie.has(i),tell:null,peak:0,answered:false,leaks:[]}));
+}
+function loadSavedBaseline(name){ try{ return JSON.parse(localStorage.getItem('htlBase_'+name)||'null'); }catch(e){ return null; } }
+
+let match={
+  screen:'home', modeKey:'holdtheline', deckKey:'party', target:15,
+  teams:[{name:'Team A',players:[],score:0},{name:'Team B',players:[],score:0}],
+  defending:0, round:0, phase:'calibrate', speakers:[], activeSpeaker:null,
+  baselines:{}, dossier:[], curIdx:0, call:{picks:[],passed:false,wager:0},
+  result:null, over:false, log:[]
+};
+let dossierRevealed=false;   // transient UI gate
+
+function setupRound(m){
+  const cfg=MODES[m.modeKey];
+  m.speakers=[...m.teams[m.defending].players];
+  m.activeSpeaker=m.speakers[0]||null;
+  m.dossier=buildDossier(cfg,m.deckKey);
+  m.curIdx=0; m.call={picks:[],passed:false,wager:0}; m.result=null;
+  m.baselines={}; m.speakers.forEach(s=>{ const b=loadSavedBaseline(s); if(b) m.baselines[s]=b; });
+  m.phase='calibrate'; m.screen='stage';
+}
+function firstUnanswered(m){ const i=m.dossier.findIndex(s=>!s.answered); return i; }
+
+/* ---- pure state transitions ---- */
+function reduce(m,ev){
+  switch(ev.t){
+    case 'PICK_MODE': m.modeKey=ev.key; m.screen='setup'; break;
+    case 'GOTO': m.screen=ev.screen; break;
+    case 'CONFIG': Object.assign(m,ev.cfg); break;
+    case 'START_MATCH': m.defending=0; m.round=1; m.over=false; m.log=[]; m.teams[0].score=0; m.teams[1].score=0; setupRound(m); break;
+    case 'CAL_DONE': m.baselines[ev.player]=ev.baseline; break;
+    case 'TO_DOSSIER': m.phase='dossier'; break;
+    case 'BEGIN_INTERROGATION': m.phase='interrogate'; m.curIdx=Math.max(0,firstUnanswered(m)); break;
+    case 'TAG_IN': m.activeSpeaker=ev.player; break;
+    case 'NEXT_QUESTION': { const n=firstUnanswered(m); m.curIdx = n>=0?n:Math.min(m.curIdx+1,m.dossier.length-1); break; }
+    case 'GOTO_STMT': m.curIdx=ev.idx; break;
+    case 'ANSWER_SCORED': {
+      const s=m.dossier[ev.idx]; if(s){ s.tell=ev.tell; s.leaks=ev.leaks||[]; s.answered=true;
+        m.log.push({round:m.round,text:s.text,protected:s.protected,tell:ev.tell,speaker:m.activeSpeaker}); }
+      const n=firstUnanswered(m); if(n>=0) m.curIdx=n;
+      break;
+    }
+    case 'TO_CALL': m.screen='call'; m.phase='call'; break;
+    case 'SET_WAGER': m.call.wager=Math.max(0,Math.min(ev.v,m.teams[1-m.defending].score)); break;
+    case 'TOGGLE_PICK': {
+      const cfg=MODES[m.modeKey];
+      if(cfg.guesses==='single'){ m.call.picks=[ev.idx]; }
+      else { const i=m.call.picks.indexOf(ev.idx); if(i>=0) m.call.picks.splice(i,1); else m.call.picks.push(ev.idx); }
+      break;
+    }
+    case 'LOCK_CALL': m.call.passed=false; m.result=computeResult(m); m.screen='reveal'; break;
+    case 'PASS': m.call.picks=[]; m.call.passed=true; m.result=computeResult(m); m.screen='reveal'; break;
+    case 'TO_SCOREBOARD': {
+      const r=m.result;
+      m.teams[m.defending].score=Math.max(0,m.teams[m.defending].score+r.dDelta);
+      m.teams[1-m.defending].score=Math.max(0,m.teams[1-m.defending].score+r.iDelta);
+      m.over = m.teams[0].score>=m.target || m.teams[1].score>=m.target;
+      m.screen='scoreboard';
+      break;
+    }
+    case 'NEXT_ROUND': m.defending=1-m.defending; m.round++; setupRound(m); break;
+    case 'TO_END': m.screen='end'; break;
+    case 'PLAY_AGAIN': m.screen='home'; m.round=0; m.over=false; m.teams[0].score=0; m.teams[1].score=0; m.log=[]; break;
+  }
+  return m;
+}
+
+/* ---- scoring ---- */
+function computeResult(m){
+  const cfg=MODES[m.modeKey];
+  const dteam=m.teams[m.defending], iteam=m.teams[1-m.defending];
+  const rows=m.dossier.map((s,i)=>{ const tv=s.tell!=null?s.tell:s.peak;
+    return {...s,i,tv,survived:tv<cfg.tellThreshold,ice:tv<25,called:m.call.picks.includes(i)}; });
+  let dDelta=0,iDelta=0,summary='';
+  if(cfg.coop){
+    const kept=rows.filter(r=>r.protected&&r.survived).length;
+    const total=rows.filter(r=>r.protected).length;
+    dDelta=kept*2;
+    summary=`The crew kept ${kept} of ${total} cover stories under the warden's line (+${dDelta} to ${dteam.name}).`;
+  } else if(cfg.guesses==='single'){
+    const pick=m.call.picks[0];
+    if(pick!=null && m.dossier[pick] && m.dossier[pick].protected){ iDelta+=3; summary=`${iteam.name} spotted the cover lie (+3).`; }
+    else { dDelta+=3; summary=`${iteam.name} guessed wrong — ${dteam.name} keeps the cover (+3).`; }
+  } else {
+    rows.forEach(r=>{
+      if(r.protected){ if(r.called) iDelta+=3; else dDelta+=(r.ice?3:2); }
+      else if(r.called) iDelta-=2;
+    });
+    if(cfg.wager){ const anyRight=rows.some(r=>r.protected&&r.called); iDelta+= anyRight? m.call.wager : -m.call.wager; }
+    const caught=rows.filter(r=>r.protected&&r.called).length, kept=rows.filter(r=>r.protected&&!r.called).length;
+    summary=`${iteam.name} caught ${caught} lie${caught!==1?'s':''}; ${dteam.name} slipped ${kept} past them.`;
+  }
+  return {rows,dDelta,iDelta,dteamIdx:m.defending,summary};
+}
+
+/* ---- dispatch: apply transition, then engine side-effects, then render ---- */
+function dispatch(ev){
+  const prevScreen=match.screen;
+  reduce(match,ev);
+  if(match.screen==='stage' && prevScreen!=='stage'){ dossierRevealed=false; startCamera(); }
+  if(match.screen!=='stage' && prevScreen==='stage') stopCamera();
+  if(['BEGIN_INTERROGATION','TAG_IN','NEXT_ROUND','START_MATCH'].includes(ev.t))
+    baseline = match.baselines[match.activeSpeaker] || null;
+  if(ev.t==='TO_DOSSIER') dossierRevealed=false;
+  render();
+}
+
+/* ---- engine-driven actions (run measurement, then dispatch a pure event) ---- */
+let answerTimer=null;
+function curStmt(){ return match.phase==='interrogate'?match.dossier[match.curIdx]:null; }
+function beginAnswer(){
+  if(qmode.active||!running) return;
+  const secs=MODES[match.modeKey].answerSecs;
+  startWindow('answer');
+  answerTimer=setInterval(()=>{
+    const left=Math.ceil((secs*1000-(performance.now()-qmode.start))/1000);
+    if(left<=0) finishAnswer();
+    else { const b=$('btnAnswer'); if(b) b.textContent=`⏹ ${left}s — stop`; }
+  },200);
+  const b=$('btnAnswer'); if(b){ b.classList.add('rec'); b.textContent='⏹ stop'; }
+}
+function finishAnswer(){
+  if(!qmode.active) return;
+  clearInterval(answerTimer); answerTimer=null; qmode.active=false;
+  const f=computeFeatures(); const r=scoreFeatures(f);
+  const cfg=MODES[match.modeKey];
+  beep(r.pct<cfg.tellThreshold?'good':'bad');
+  dispatch({t:'ANSWER_SCORED',idx:match.curIdx,tell:r.pct,leaks:[...qmode.flashes]});
+}
+function captureBaseline(player){
+  if(qmode.active||!running) return;
+  startWindow('cal'); const secs=8;
+  answerTimer=setInterval(()=>{
+    const left=Math.ceil((secs*1000-(performance.now()-qmode.start))/1000);
+    const b=$('btnCal'); if(left<=0) finishBaseline(player); else if(b) b.textContent=`⏺ stay relaxed… ${left}s`;
+  },200);
+  const b=$('btnCal'); if(b){ b.classList.add('rec'); b.textContent='⏺ capturing…'; }
+}
+function finishBaseline(player){
+  clearInterval(answerTimer); answerTimer=null; qmode.active=false;
+  const f=computeFeatures();
+  const bl={blink:Math.max(2,Math.round(f.blink||0)),gaze:Math.round(f.gaze||0),lip:f.lip||0,pitch:f.pitch||0,asym:f.asym};
+  try{ localStorage.setItem('htlBase_'+player,JSON.stringify(bl)); }catch(e){}
+  beep('good');
+  dispatch({t:'CAL_DONE',player,baseline:bl});
+}
+
+/* ---- live meter (called every frame from the engine loop) ---- */
+function setMeter(v){
+  const f=$('meterFill'); if(!f) return;
+  v=Math.max(0,Math.min(100,v));
+  f.style.width=Math.max(3,v)+'%';
+  const mv=$('meterVal'); if(mv) mv.textContent=v+'% · '+(v<35?'composed':v<55?'wavering':'tell!');
+}
+function gameOnFrame(raw,b,now){
+  const dk=dominantKey();
+  const ee=$('emoEmoji'),en=$('emoName');
+  if(ee&&en){ if(dk){ const em=EMOTIONS.find(x=>x.key===dk); ee.textContent=em.emoji; en.textContent=em.label; } else { ee.textContent='😐'; en.textContent='Composed'; } }
+  if(++uiTick%4) return;
+  const elapsed=blinkTimes.length?Math.min(60000,now-(blinkTimes[0]||0)):60000;
+  const bpm=Math.round(blinkTimes.length*60000/Math.max(elapsed,10000));
+  const gp=gazeSamples.length?Math.round(100*gazeSamples.filter(s=>s.off).length/gazeSamples.length):0;
+  const comp=liveComposure(bpm,gp);
+  setMeter(comp);
+  const st=curStmt(); if(qmode.active && qmode.mode==='answer' && st && comp>st.peak) st.peak=comp;
+}
+
+/* =================================================================
+   RENDER
+   ================================================================= */
+const esc=s=>(''+s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function show(screen){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id==='scr-'+screen)); }
+
+function render(){
+  show(match.screen);
+  if(match.screen==='home') renderHome();
+  else if(match.screen==='setup') renderSetup();
+  else if(match.screen==='stage') renderStage();
+  else if(match.screen==='call') renderCall();
+  else if(match.screen==='reveal') renderReveal();
+  else if(match.screen==='scoreboard') renderScore();
+  else if(match.screen==='end') renderEnd();
+  reevalMini();
+}
+function renderHome(){
+  $('modeCards').innerHTML=Object.entries(MODES).map(([k,m])=>`
+    <div class="modeCard ${k===match.modeKey?'sel':''}" data-act="pickmode" data-key="${k}">
+      <span class="chip info">${m.tag}</span>
+      <div class="body"><b>${esc(m.label)}</b><p>${esc(m.blurb)}</p></div>
+    </div>`).join('');
+}
+function renderSetup(){
+  const dk=$('deck'); if(dk && !dk.dataset.filled){ dk.innerHTML=Object.entries(DECKS).map(([k,d])=>`<option value="${k}">${d.label}</option>`).join(''); dk.dataset.filled='1'; }
+  const m=MODES[match.modeKey];
+  $('modeSummary').innerHTML=`<b style="color:var(--text)">${esc(m.label)}</b> — ${m.statements} statements, ${m.lies} planted ${m.lies>1?'lies':'lie'} per round${m.coop?' · co-op vs the meter':''}${m.wager?' · wagering on':''}.`;
+}
+function renderStage(){
+  const m=match, cfg=MODES[m.modeKey], dteam=m.teams[m.defending].name;
+  $('videoWrap').classList.toggle('mirror',facing==='user');
+  $('meterTick').style.left=cfg.tellThreshold+'%';
+  $('stageTop').innerHTML=`<span class="chip mut">Round ${m.round}</span><span>Defending: <b>${esc(dteam)}</b></span>`+
+    (m.phase==='interrogate'&&m.activeSpeaker?`<span>· In the chair: <b>${esc(m.activeSpeaker)}</b></span>`:'');
+  const p=$('stagePanel');
+  if(m.phase==='calibrate'){
+    const done=m.speakers.filter(s=>m.baselines[s]).length;
+    p.innerHTML=`<div class="card"><h2>Calibrate each defender</h2>
+      <p class="lead">Pass the device to each player on <b>${esc(dteam)}</b>. They look at the camera and stay relaxed for 8 seconds — this captures their normal face so the meter reads <i>their</i> tells, not just an expressive face. You can skip and the meter falls back to raw expressiveness.</p>
+      <div class="speakerRow">${m.speakers.map(s=>`<span class="spk ${m.baselines[s]?'done':''}" >${m.baselines[s]?'✓ ':''}${esc(s)}</span>`).join('')||'<span class="lead">No players on this team.</span>'}</div>
+      <label class="fld">Capture baseline for</label>
+      <select class="in" id="calWho">${m.speakers.map(s=>`<option value="${esc(s)}">${esc(s)}${m.baselines[s]?' (recapture)':''}</option>`).join('')}</select>
+      <div class="controls"><button class="btn primary" data-act="capture" id="btnCal">⏺ Capture 8s</button></div>
+      <button class="btn block ${done?'primary':''}" data-act="todossier">${done?'Continue ›':'Skip calibration ›'}</button>
+    </div>`;
+  } else if(m.phase==='dossier'){
+    if(!dossierRevealed){
+      p.innerHTML=`<div class="card"><div class="gate"><div class="big">🙈</div>
+        <h3 class="t">Defending team only</h3>
+        <p class="lead"><b>${esc(dteam)}</b>, take the device. Everyone else — look away. This shows which claims you must lie about.</p>
+        <button class="btn primary block" data-act="revealdossier">Reveal our dossier</button></div></div>`;
+    } else {
+      p.innerHTML=`<div class="card"><h2>Your dossier — ${esc(dteam)}</h2>
+        <p class="lead">Answer truthfully on the green ones. <b>Lie convincingly</b> on the red ones and keep your meter calm. Interrogators will hear every answer.</p>
+        ${m.dossier.map((s,i)=>`<div class="stmt"><div class="top"><span class="n">${i+1}</span>
+          <span class="chip ${s.protected?'bad':'good'}">${s.protected?'LIE — protect this':'TRUTH'}</span></div>
+          <div class="txt">${esc(s.text)}</div></div>`).join('')}
+        <button class="btn primary block" data-act="begin" style="margin-top:6px">Start interrogation ›</button></div>`;
+    }
+  } else if(m.phase==='interrogate'){
+    const answered=m.dossier.filter(s=>s.answered).length, total=m.dossier.length;
+    const s=m.dossier[m.curIdx];
+    const tagRow = cfg.meterReset==='speaker'&&m.speakers.length>1
+      ? `<label class="fld">Tag in (re-anchors the meter)</label><div class="speakerRow">${m.speakers.map(pl=>`<span class="spk ${pl===m.activeSpeaker?'active':''} ${m.baselines[pl]?'':'mut'}" data-act="tagin" data-player="${esc(pl)}">${esc(pl)}${m.baselines[pl]?'':' (no baseline)'}</span>`).join('')}</div>`
+      : '';
+    p.innerHTML=`<div class="card"><h2>Claim ${m.curIdx+1} of ${total} <span style="margin-left:auto;font-size:11px;color:var(--dim)">${answered}/${total} answered</span></h2>
+      <div class="stmt cur"><div class="txt">${esc(s.text)}</div>${s.answered?`<div class="tellbar"><div class="tf" style="width:${s.tell}%"></div></div><div style="font-size:11px;color:var(--dim);margin-top:3px">answer captured · tell ${s.tell}%</div>`:''}</div>
+      <div class="controls">
+        <button class="btn primary" data-act="answer" id="btnAnswer">${qmode.active?'⏹ stop':'▶ Start answer'}</button>
+        <button class="btn" data-act="next">⏭ Next claim</button>
+      </div>
+      ${tagRow}
+      <button class="btn block ${answered===total?'primary':''}" data-act="tocall" style="margin-top:6px">${answered===total?'Everyone’s answered — to the call ›':'Skip to the call ›'}</button>
+      <p class="lead" style="margin-top:8px;font-size:11.5px">Defender: tap <b>Start answer</b>, deliver the line, tap stop. Keep the meter left of the white line to look composed.</p>
+    </div>`;
+  }
+}
+function renderCall(){
+  const m=match, cfg=MODES[m.modeKey];
+  const iteam=m.teams[1-m.defending].name, dteam=m.teams[m.defending].name;
+  if(cfg.coop){
+    $('callBody').innerHTML=`<div class="card"><h2>The Heist</h2><p class="lead">No accusations in co-op — the warden (the meter) already judged each cover story. See how the crew did.</p>
+      <button class="btn primary block" data-act="lockcall">Open the vault ›</button></div>`;
+    return;
+  }
+  const single=cfg.guesses==='single';
+  $('callBody').innerHTML=`<button class="btn" data-act="goto" data-screen="stage" style="margin-bottom:10px;opacity:.7" disabled>Interrogation over</button>
+    <div class="card"><h2>${esc(iteam)}: make the call</h2>
+    <p class="lead">${single?'Pick the <b>one</b> claim you think was the cover lie.':'Select every claim you believe was a <b>planted lie</b>.'} A calm liar beats a wrong guess.</p>
+    ${m.dossier.map((s,i)=>`<div class="stmt pickable ${m.call.picks.includes(i)?'picked':''}" data-act="pick" data-idx="${i}">
+      <div class="top"><span class="n">${i+1}</span>${m.call.picks.includes(i)?'<span class="chip bad">calling lie</span>':'<span class="chip mut">tap to call</span>'}
+      ${s.tell!=null?`<span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${s.tell}%</span>`:''}</div>
+      <div class="txt">${esc(s.text)}</div>
+      ${s.tell!=null?`<div class="tellbar"><div class="tf" style="width:${s.tell}%"></div></div>`:''}</div>`).join('')}
+    ${cfg.wager?`<label class="fld">Wager (you have ${m.teams[1-m.defending].score} pts)</label>
+      <input class="in" id="wager" type="number" min="0" max="${m.teams[1-m.defending].score}" value="${m.call.wager}" placeholder="0">
+      <p class="lead" style="font-size:11.5px;margin-top:4px">If any call is right you win the wager; if all are wrong you lose it.</p>`:''}
+    <div class="controls" style="margin-top:8px">
+      <button class="btn primary" data-act="lockcall">🔒 Lock in call</button>
+      <button class="btn" data-act="pass">Pass (no call)</button>
+    </div></div>`;
+}
+function renderReveal(){
+  const m=match, r=m.result, cfg=MODES[m.modeKey];
+  const dteam=m.teams[m.defending].name, iteam=m.teams[1-m.defending].name;
+  $('revealBody').innerHTML=`<div class="card"><h2>The reveal</h2>
+    <p class="lead">${esc(r.summary)}</p>
+    ${r.rows.map(row=>{
+      const status = row.protected ? (row.called?'<span class="chip bad">caught</span>':`<span class="chip good">survived${row.ice?' · ice 🧊':''}</span>`)
+                                    : (row.called?'<span class="chip warn">false call</span>':'<span class="chip mut">truth</span>');
+      return `<div class="stmt"><div class="top"><span class="n">${row.i+1}</span>
+        <span class="chip ${row.protected?'bad':'good'}">${row.protected?'was a LIE':'was TRUE'}</span>${status}
+        <span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${row.tv}%</span></div>
+        <div class="txt">${esc(row.text)}</div>
+        <div class="tellbar"><div class="tf" style="width:${row.tv}%"></div></div></div>`;
+    }).join('')}
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <div class="scoreRow" style="flex:1"><span>${esc(dteam)}<br><span style="font-size:11px;color:var(--dim)">defending</span></span><span class="delta ${r.dDelta>=0?'up':'down'}">${r.dDelta>=0?'+':''}${r.dDelta}</span></div>
+      <div class="scoreRow" style="flex:1"><span>${esc(iteam)}<br><span style="font-size:11px;color:var(--dim)">interrogating</span></span><span class="delta ${r.iDelta>=0?'up':'down'}">${r.iDelta>=0?'+':''}${r.iDelta}</span></div>
+    </div>
+    <button class="btn primary block" data-act="toscore" style="margin-top:10px">Update scoreboard ›</button></div>`;
+}
+function renderScore(){
+  const m=match;
+  const lead=m.teams[0].score===m.teams[1].score?-1:(m.teams[0].score>m.teams[1].score?0:1);
+  $('scoreBody').innerHTML=`<div class="card"><h2>Scoreboard · play to ${m.target}</h2>
+    ${m.teams.map((t,i)=>`<div class="scoreRow ${lead===i?'lead':''}"><span>${esc(t.name)} ${lead===i?'<span class="chip good">leading</span>':''}</span><b>${t.score}</b></div>`).join('')}
+    ${m.over?`<div class="notice" style="margin-top:10px">🏁 Someone reached ${m.target} — that's match point.</div>
+      <button class="btn primary block" data-act="toend">See final results ›</button>`
+     :`<p class="lead" style="margin-top:8px">Next round, <b>${esc(m.teams[1-m.defending].name)}</b> defends.</p>
+      <button class="btn primary block" data-act="nextround">Next round ›</button>`}
+  </div>`;
+}
+function renderEnd(){
+  const m=match;
+  const winner = m.teams[0].score===m.teams[1].score?null:(m.teams[0].score>m.teams[1].score?m.teams[0]:m.teams[1]);
+  const lies=m.log.filter(l=>l.protected);
+  const stone = lies.length?lies.reduce((a,b)=>b.tell<a.tell?b:a):null;
+  const tell = lies.length?lies.reduce((a,b)=>b.tell>a.tell?b:a):null;
+  $('endBody').innerHTML=`<div class="card"><h2>Final results</h2>
+    <div class="gate"><div class="big">🏆</div><h3 class="t">${winner?esc(winner.name)+' wins!':'It’s a tie!'}</h3></div>
+    ${m.teams.map(t=>`<div class="scoreRow ${winner===t?'lead':''}"><span>${esc(t.name)}</span><b>${t.score}</b></div>`).join('')}
+    ${stone?`<div class="stmt" style="margin-top:10px"><div class="top"><span class="chip good">🧊 Coldest bluff</span><span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${stone.tell}%</span></div><div class="txt"><b>${esc(stone.speaker||'?')}</b> on “${esc(stone.text)}”</div></div>`:''}
+    ${tell?`<div class="stmt"><div class="top"><span class="chip bad">😅 Biggest tell</span><span style="margin-left:auto;font-size:11px;color:var(--dim)">tell ${tell.tell}%</span></div><div class="txt"><b>${esc(tell.speaker||'?')}</b> on “${esc(tell.text)}”</div></div>`:''}
+    <button class="btn primary block" data-act="playagain" style="margin-top:10px">Play again ›</button></div>
+    <footer>It's a game, not a lie detector · on-device only · <a href="privacy.html">Privacy</a></footer>`;
+}
+
+/* =================================================================
+   INPUT HANDLING (delegated)
+   ================================================================= */
+function val(id){ const e=$(id); return e?e.value.trim():''; }
+function parsePlayers(id){ return val(id).split(/[,\n]/).map(s=>s.trim()).filter(Boolean); }
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el||el.disabled) return;
+  const act=el.dataset.act;
+  switch(act){
+    case 'pickmode': dispatch({t:'PICK_MODE',key:el.dataset.key}); break;
+    case 'goto': dispatch({t:'GOTO',screen:el.dataset.screen}); break;
+    case 'start': {
+      const teams=[
+        {name:val('tA')||'Team A',players:parsePlayers('pA'),score:0},
+        {name:val('tB')||'Team B',players:parsePlayers('pB'),score:0}];
+      if(!teams[0].players.length||!teams[1].players.length){ alert('Add at least one player to each team.'); return; }
+      dispatch({t:'CONFIG',cfg:{teams,deckKey:val('deck')||'party',target:+val('target')||15}});
+      dispatch({t:'START_MATCH'});
+      break;
+    }
+    case 'capture': { const who=val('calWho')||match.speakers[0]; if(who) captureBaseline(who); break; }
+    case 'todossier': dispatch({t:'TO_DOSSIER'}); break;
+    case 'revealdossier': dossierRevealed=true; renderStage(); break;
+    case 'begin': dispatch({t:'BEGIN_INTERROGATION'}); break;
+    case 'answer': if(qmode.active) finishAnswer(); else beginAnswer(); break;
+    case 'next': dispatch({t:'NEXT_QUESTION'}); break;
+    case 'tagin': dispatch({t:'TAG_IN',player:el.dataset.player}); break;
+    case 'tocall': dispatch({t:'TO_CALL'}); break;
+    case 'pick': dispatch({t:'TOGGLE_PICK',idx:+el.dataset.idx}); break;
+    case 'lockcall': { const w=$('wager'); if(w) dispatch({t:'SET_WAGER',v:+w.value||0}); dispatch({t:'LOCK_CALL'}); break; }
+    case 'pass': dispatch({t:'PASS'}); break;
+    case 'toscore': dispatch({t:'TO_SCOREBOARD'}); break;
+    case 'nextround': dispatch({t:'NEXT_ROUND'}); break;
+    case 'toend': dispatch({t:'TO_END'}); break;
+    case 'playagain': dispatch({t:'PLAY_AGAIN'}); break;
+    case 'mic': toggleMic(); break;
+    case 'flip': flipCamera(); break;
+  }
+});
+async function flipCamera(){ facing=facing==='user'?'environment':'user'; $('videoWrap').classList.toggle('mirror',facing==='user'); if(running){ stopCamera(); await startCamera(); } }
+
+/* ---- PWA + boot ---- */
+if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+render();
+</script>
+</body>
+</html>
