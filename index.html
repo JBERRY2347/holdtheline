@@ -54,6 +54,22 @@ main{max-width:760px;margin:0 auto;padding:14px 12px 40px}
 .playerRow .in{flex:1;margin:0}
 .btnDel{flex:0 0 auto;width:42px;padding:0;justify-content:center;color:var(--dim)}
 .btnDel:hover{border-color:var(--bad);color:var(--bad)}
+/* read-the-tell trainer (watchers, while waiting) */
+.tstats{display:flex;gap:16px;font-size:12.5px;color:var(--dim);margin:4px 0 8px}
+.tstats b{color:var(--text)}
+.speedRow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-bottom:10px}
+.speedRow button{background:var(--panel2);border:1px solid var(--border);color:var(--dim);font:inherit;font-size:11.5px;padding:5px 10px;border-radius:8px;cursor:pointer}
+.speedRow button.active{border-color:var(--accent);color:var(--accent)}
+#faceBox{display:flex;justify-content:center;align-items:center;min-height:150px}
+#faceBox svg{width:150px;height:150px}
+#faceBox .empty{color:var(--dim);font-size:12.5px;text-align:center;padding:0 6px}
+#feedback{font-size:12.5px;margin:8px 0;min-height:18px;text-align:center;line-height:1.4}
+.answers{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px}
+.answers button{background:var(--panel2);border:1px solid var(--border);color:var(--text);font:inherit;font-size:12px;font-weight:600;padding:10px 4px;border-radius:10px;cursor:pointer}
+.answers button:disabled{opacity:.4}
+.answers button.right{border-color:var(--good);color:var(--good)}
+.answers button.wrong{border-color:var(--bad);color:var(--bad)}
+@media(max-width:430px){.answers{grid-template-columns:repeat(2,1fr)}}
 .controls{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
 .chip{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;display:inline-block}
 .chip.good{background:rgba(61,220,132,.15);color:var(--good)}
@@ -186,6 +202,15 @@ footer a{color:var(--accent)}
     <button class="btn" data-act="flip" id="btnFlip">🔄 Flip</button>
   </div>
   <div id="stagePanel"></div>
+  <div id="trainerBox" class="card" hidden style="margin-top:12px">
+    <h2 style="font-size:15px">🎯 Read-the-tell trainer <span style="font-weight:400;color:var(--dim);font-size:11px">— sharpen your eye while you watch</span></h2>
+    <div class="tstats"><span>Score <b id="tScore">0</b></span><span>Streak <b id="tStreak">0</b></span><span>Accuracy <b id="tAcc">—</b></span></div>
+    <div class="speedRow">Flash: <button data-ms="500">Easy ½s</button><button data-ms="250" class="active">Real ¼s</button><button data-ms="120">Expert ⅛s</button></div>
+    <div id="faceBox"><div class="empty">A face flashes an expression, then goes neutral — name what you saw. It trains the exact micro-expressions that give a liar away.</div></div>
+    <div id="feedback"></div>
+    <div class="answers" id="answerBtns"></div>
+    <div class="controls" style="margin-top:10px"><button class="btn primary" id="btnTrain">▶ Flash a face</button></div>
+  </div>
 </section>
 
 <!-- ============ CALL ============ -->
@@ -702,7 +727,7 @@ let match={
   teams:[{name:'Team A',players:[],score:0},{name:'Team B',players:[],score:0}],
   defending:0, round:0, phase:'calibrate', speakers:[], activeSpeaker:null,
   baselines:{}, dossier:[], curIdx:0, call:{picks:[],passed:false,wager:0},
-  result:null, over:false, log:[]
+  result:null, ready:{}, over:false, log:[]
 };
 let dossierRevealed=false;   // transient UI gate
 
@@ -711,7 +736,7 @@ function setupRound(m){
   m.speakers=[...m.teams[m.defending].players];
   m.activeSpeaker=m.speakers[0]||null;
   m.dossier=cfg.custom?[]:buildDossier(cfg,m.deckKey);   // custom: the other team authors questions live
-  m.curIdx=0; m.call={picks:[],passed:false,wager:0}; m.result=null;
+  m.curIdx=0; m.call={picks:[],passed:false,wager:0}; m.result=null; m.ready={};
   m.baselines={}; m.speakers.forEach(s=>{ const b=loadSavedBaseline(s); if(b) m.baselines[s]=b; });
   m.phase='calibrate'; m.screen='stage';
 }
@@ -748,14 +773,12 @@ function reduce(m,ev){
       else { const i=m.call.picks.indexOf(ev.idx); if(i>=0) m.call.picks.splice(i,1); else m.call.picks.push(ev.idx); }
       break;
     }
-    case 'LOCK_CALL': m.call.passed=false; m.result=computeResult(m); m.screen='reveal'; break;
-    case 'PASS': m.call.picks=[]; m.call.passed=true; m.result=computeResult(m); m.screen='reveal'; break;
-    case 'TO_SCOREBOARD': {
-      const r=m.result;
-      m.teams[m.defending].score=Math.max(0,m.teams[m.defending].score+r.dDelta);
-      m.teams[1-m.defending].score=Math.max(0,m.teams[1-m.defending].score+r.iDelta);
-      m.over = m.teams[0].score>=m.target || m.teams[1].score>=m.target;
-      m.screen='scoreboard';
+    case 'LOCK_CALL': m.call.passed=false; m.result=computeResult(m); m.ready={}; m.screen='reveal'; break;
+    case 'PASS': m.call.picks=[]; m.call.passed=true; m.result=computeResult(m); m.ready={}; m.screen='reveal'; break;
+    case 'TO_SCOREBOARD': applyScores(m); break;                       // local single-device: advance directly
+    case 'READY': {                                                    // online: both teams must confirm
+      m.ready=m.ready||{}; m.ready[ev.team]=true;
+      if(m.ready[0]&&m.ready[1]){ m.ready={}; applyScores(m); }
       break;
     }
     case 'NEXT_ROUND': m.defending=1-m.defending; m.round++; setupRound(m); break;
@@ -792,6 +815,13 @@ function computeResult(m){
   }
   return {rows,dDelta,iDelta,dteamIdx:m.defending,summary};
 }
+function applyScores(m){                                   // apply the round result and move to the scoreboard
+  const r=m.result; if(!r) return;
+  m.teams[m.defending].score=Math.max(0,m.teams[m.defending].score+r.dDelta);
+  m.teams[1-m.defending].score=Math.max(0,m.teams[1-m.defending].score+r.iDelta);
+  m.over = m.teams[0].score>=m.target || m.teams[1].score>=m.target;
+  m.screen='scoreboard';
+}
 
 function computeSoloResult(m){
   const cfg=MODES[m.modeKey];
@@ -813,7 +843,7 @@ function computeSoloResult(m){
 
 /* ---- dispatch: apply transition, then engine side-effects, then render ---- */
 /* events that mutate shared match state (relayed online; host-authoritative) */
-const SHARED=new Set(['START_MATCH','CAL_DONE','TO_DOSSIER','ADD_QUESTION','DEL_QUESTION','CHOOSE','BEGIN_INTERROGATION','TAG_IN','NEXT_QUESTION','GOTO_STMT','ANSWER_SCORED','TO_CALL','SET_WAGER','TOGGLE_PICK','LOCK_CALL','PASS','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
+const SHARED=new Set(['START_MATCH','CAL_DONE','TO_DOSSIER','ADD_QUESTION','DEL_QUESTION','CHOOSE','BEGIN_INTERROGATION','TAG_IN','NEXT_QUESTION','GOTO_STMT','ANSWER_SCORED','TO_CALL','SET_WAGER','TOGGLE_PICK','LOCK_CALL','PASS','READY','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
 
 function camShouldRun(){
   if(match.screen!=='stage') return false;
@@ -924,7 +954,7 @@ function gameOnFrame(raw,b,now){
    ONLINE (Supabase Realtime) — host-authoritative snapshot sync.
    Camera/analysis stay on each device; only state + meter numbers travel.
    ================================================================= */
-const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL','ADD_QUESTION','DEL_QUESTION','CHOOSE','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
+const CLIENT_OK=new Set(['ANSWER_SCORED','CAL_DONE','TOGGLE_PICK','SET_WAGER','LOCK_CALL','PASS','TO_DOSSIER','BEGIN_INTERROGATION','NEXT_QUESTION','TAG_IN','TO_CALL','ADD_QUESTION','DEL_QUESTION','CHOOSE','READY','TO_SCOREBOARD','NEXT_ROUND','TO_END','PLAY_AGAIN']);
 function teamIdxOf(name){ return match.teams.findIndex(t=>t.players.includes(name)); }
 function isCaptain(name){ return !!name && match.teams.some(t=>t.players&&t.players[0]===name); }
 function canDriveFlow(){ return net.mode!=='client' || (net.me && isCaptain(net.me.name)); }  // host or a team captain advances neutral screens
@@ -1020,6 +1050,7 @@ function hostApplyIntent(ev,from){
   if(['LOCK_CALL','PASS'].includes(t) && teamIdxOf(from)!==1-def && !(MODES[match.modeKey].coop&&isCaptain(from))) return; // guessing team locks (co-op: any captain opens the vault)
   if(['ADD_QUESTION','DEL_QUESTION'].includes(t) && teamIdxOf(from)!==1-def) return; // asking team writes questions
   if(t==='CHOOSE' && from!==match.activeSpeaker) return;             // only the speaker picks truth/lie
+  if(t==='READY') ev.team=teamIdxOf(from);                           // mark the sender's team ready (server-set)
   if(t==='TO_DOSSIER' && from!==dcap) return;                        // defending captain ends calibration
   if(t==='BEGIN_INTERROGATION' && from!==(custom?icap:dcap)) return; // custom: asking captain sends Qs; else defending captain
   if(['NEXT_QUESTION','TO_CALL'].includes(t) && from!==match.activeSpeaker) return; // whoever's in the chair steps
@@ -1152,6 +1183,7 @@ function renderStage(){
   const ml=$('meterLabel');
   if(ml) ml.textContent = (online && m.phase==='interrogate' && !meSpk) ? '🔴 '+(m.activeSpeaker||'speaker')+'’s tell meter (live)'
     : (m.phase==='interrogate'&&online&&meSpk) ? 'Your composure / tells' : 'Composure / tells';
+  const tb=$('trainerBox'); if(tb) tb.hidden = !(online && m.phase==='interrogate' && !meSpk);  // watchers train while waiting
   const watch=(who,what)=>`<div class="card"><div class="gate"><div class="big">📺</div><h3 class="t">${who}</h3><p class="lead">${what}</p></div></div>`;
   const roster=`<div class="speakerRow">${m.speakers.map(s=>`<span class="spk ${m.baselines[s]?'done':''}">${m.baselines[s]?'✓ ':''}${esc(s)}</span>`).join('')||'<span class="lead">No players.</span>'}</div>`;
   if(m.phase==='calibrate'){
@@ -1313,6 +1345,16 @@ function renderReveal(){
     return;
   }
   const dteam=m.teams[m.defending].name, iteam=m.teams[1-m.defending].name;
+  const online=net.mode!=='local', rdy=m.ready||{}, myTeam=net.me?net.me.teamIdx:-1;
+  const advanceBlock = !online
+    ? '<button class="btn primary block" data-act="toscore" style="margin-top:10px">Update scoreboard ›</button>'
+    : `<div style="margin-top:10px">
+        <div class="scoreRow"><span>${esc(m.teams[0].name)}</span>${rdy[0]?'<span class="chip good">✓ ready</span>':'<span class="chip mut">not ready</span>'}</div>
+        <div class="scoreRow"><span>${esc(m.teams[1].name)}</span>${rdy[1]?'<span class="chip good">✓ ready</span>':'<span class="chip mut">not ready</span>'}</div>
+        ${rdy[myTeam]
+          ? `<div class="notice" style="margin-top:8px">✓ Your team is ready — <b>awaiting ${esc((m.teams[1-myTeam]||{}).name||'the other team')}</b> to update the scoreboard.</div>`
+          : `<button class="btn primary block" data-act="ready" style="margin-top:8px">Update scoreboard ›</button><p class="lead" style="font-size:11.5px;margin-top:4px">Both teams must tap this to move on.</p>`}
+       </div>`;
   $('revealBody').innerHTML=`<div class="card"><h2>The reveal</h2>
     <p class="lead">${esc(r.summary)}</p>
     ${r.rows.map(row=>{
@@ -1328,7 +1370,7 @@ function renderReveal(){
       <div class="scoreRow" style="flex:1"><span>${esc(dteam)}<br><span style="font-size:11px;color:var(--dim)">defending</span></span><span class="delta ${r.dDelta>=0?'up':'down'}">${r.dDelta>=0?'+':''}${r.dDelta}</span></div>
       <div class="scoreRow" style="flex:1"><span>${esc(iteam)}<br><span style="font-size:11px;color:var(--dim)">interrogating</span></span><span class="delta ${r.iDelta>=0?'up':'down'}">${r.iDelta>=0?'+':''}${r.iDelta}</span></div>
     </div>
-    ${canDriveFlow()?'<button class="btn primary block" data-act="toscore" style="margin-top:10px">Update scoreboard ›</button>':'<div class="notice" style="margin-top:10px">Waiting for a captain to continue…</div>'}</div>`;
+    ${advanceBlock}</div>`;
 }
 function renderScore(){
   const m=match;
@@ -1413,6 +1455,7 @@ document.addEventListener('click',e=>{
     case 'lockcall': { const w=$('wager'); if(w) dispatch({t:'SET_WAGER',v:+w.value||0}); dispatch({t:'LOCK_CALL'}); break; }
     case 'pass': dispatch({t:'PASS'}); break;
     case 'toscore': dispatch({t:'TO_SCOREBOARD'}); break;
+    case 'ready': dispatch({t:'READY',team:net.me?net.me.teamIdx:-1}); break;
     case 'nextround': dispatch({t:'NEXT_ROUND'}); break;
     case 'toend': dispatch({t:'TO_END'}); break;
     case 'playagain':
@@ -1428,6 +1471,103 @@ document.addEventListener('change',e=>{
   if(e.target.id==='lobbyDeck') match.deckKey=e.target.value;
 });
 async function flipCamera(){ facing=facing==='user'?'environment':'user'; $('videoWrap').classList.toggle('mirror',facing==='user'); if(running){ stopCamera(); await startCamera(); } }
+
+/* =================================================================
+   READ-THE-TELL TRAINER (ported from CueSight) — watchers play while waiting
+   ================================================================= */
+const FEATURES={
+ happiness:'Lip corners up; genuine version adds crow’s feet and raised cheeks (eyes narrow).',
+ sadness:'Inner eyebrow corners pulled UP and together; upper eyelids droop; lip corners down.',
+ anger:'Brows lowered and drawn together (vertical glare lines); eyelids tense; lips pressed tight.',
+ fear:'Brows raised and pulled FLAT together; upper eyelids high, whites showing; lips stretched sideways.',
+ surprise:'Brows high and CURVED; eyes wide; jaw drops open loosely. The briefest emotion.',
+ disgust:'Nose wrinkles; upper lip raises; brows drop slightly. Think “bad smell.”',
+ contempt:'The only one-sided expression: a single lip corner tightens and raises — a smirk.',
+};
+function svgFace(e){
+  const skin='#e9bd88', line='#3a2c1e', white='#fff';
+  let brows='',eyes='',mouth='',extra='';
+  const eyeOpen=(cx,ry=7)=>`<ellipse cx="${cx}" cy="92" rx="13" ry="${ry}" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="${cx}" cy="92" r="5" fill="${line}"/>`;
+  switch(e){
+    case 'neutral':
+      brows=`<path d="M55 72 H89" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M111 72 H145" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+      eyes=eyeOpen(72)+eyeOpen(128);
+      mouth=`<path d="M78 142 H122" stroke="${line}" stroke-width="4.5" stroke-linecap="round" fill="none"/>`; break;
+    case 'happiness':
+      brows=`<path d="M55 70 Q72 64 89 70" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M111 70 Q128 64 145 70" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+      eyes=`<path d="M60 92 Q72 84 84 92" stroke="${line}" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M116 92 Q128 84 140 92" stroke="${line}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      extra=`<path d="M50 88 l-7 -3 M50 94 l-8 0 M50 100 l-7 3 M150 88 l7 -3 M150 94 l8 0 M150 100 l7 3" stroke="${line}" stroke-width="1.8" opacity=".55"/>`;
+      mouth=`<path d="M70 132 Q100 162 130 132 Q100 146 70 132 Z" fill="#b8503c" stroke="${line}" stroke-width="3"/>`; break;
+    case 'sadness':
+      brows=`<path d="M58 78 Q75 68 90 73" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M110 73 Q125 68 142 78" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+      eyes=eyeOpen(72,5.5)+eyeOpen(128,5.5)+`<path d="M59 86 Q72 82 85 86 M115 86 Q128 82 141 86" stroke="${line}" stroke-width="2" fill="none" opacity=".6"/>`;
+      mouth=`<path d="M78 148 Q100 134 122 148" stroke="${line}" stroke-width="4.5" stroke-linecap="round" fill="none"/>`; break;
+    case 'anger':
+      brows=`<path d="M56 66 L90 78" stroke="${line}" stroke-width="6" stroke-linecap="round"/><path d="M144 66 L110 78" stroke="${line}" stroke-width="6" stroke-linecap="round"/>`;
+      extra=`<path d="M96 70 v16 M104 70 v16" stroke="${line}" stroke-width="1.6" opacity=".5"/>`;
+      eyes=`<ellipse cx="72" cy="94" rx="12" ry="5" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="72" cy="94" r="4.5" fill="${line}"/><ellipse cx="128" cy="94" rx="12" ry="5" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="128" cy="94" r="4.5" fill="${line}"/>`;
+      mouth=`<path d="M76 144 H124" stroke="${line}" stroke-width="7" stroke-linecap="round"/>`; break;
+    case 'fear':
+      brows=`<path d="M56 62 H90" stroke="${line}" stroke-width="5" stroke-linecap="round"/><path d="M110 62 H144" stroke="${line}" stroke-width="5" stroke-linecap="round"/>`;
+      eyes=`<ellipse cx="72" cy="92" rx="14" ry="11" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="72" cy="93" r="5" fill="${line}"/><ellipse cx="128" cy="92" rx="14" ry="11" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="128" cy="93" r="5" fill="${line}"/>`;
+      mouth=`<path d="M70 142 Q100 138 130 142 Q100 152 70 142 Z" fill="#8a4438" stroke="${line}" stroke-width="3"/>`; break;
+    case 'surprise':
+      brows=`<path d="M55 60 Q72 50 89 60" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M111 60 Q128 50 145 60" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+      eyes=`<circle cx="72" cy="92" r="13" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="72" cy="92" r="5" fill="${line}"/><circle cx="128" cy="92" r="13" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="128" cy="92" r="5" fill="${line}"/>`;
+      mouth=`<ellipse cx="100" cy="146" rx="14" ry="19" fill="#6e362c" stroke="${line}" stroke-width="3"/>`; break;
+    case 'disgust':
+      brows=`<path d="M58 74 L90 78" stroke="${line}" stroke-width="5" stroke-linecap="round"/><path d="M142 74 L110 78" stroke="${line}" stroke-width="5" stroke-linecap="round"/>`;
+      eyes=`<ellipse cx="72" cy="93" rx="12" ry="5.5" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="72" cy="93" r="4.5" fill="${line}"/><ellipse cx="128" cy="93" rx="12" ry="5.5" fill="${white}" stroke="${line}" stroke-width="2.5"/><circle cx="128" cy="93" r="4.5" fill="${line}"/>`;
+      extra=`<path d="M92 108 q-4 4 -2 9 M108 108 q4 4 2 9 M95 104 q5 -3 10 0" stroke="${line}" stroke-width="2" fill="none" opacity=".7"/>`;
+      mouth=`<path d="M76 144 Q100 134 124 144 M82 138 Q100 130 118 138" stroke="${line}" stroke-width="4" stroke-linecap="round" fill="none"/>`; break;
+    case 'contempt':
+      brows=`<path d="M55 72 H89" stroke="${line}" stroke-width="5" stroke-linecap="round"/><path d="M111 70 H145" stroke="${line}" stroke-width="5" stroke-linecap="round"/>`;
+      eyes=eyeOpen(72,6)+eyeOpen(128,6);
+      mouth=`<path d="M78 144 Q100 144 118 136 Q124 133 126 130" stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none"/>`;
+      extra=`<path d="M118 130 q6 -2 8 -6" stroke="${line}" stroke-width="2" opacity=".5" fill="none"/>`; break;
+  }
+  return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="104" r="84" fill="${skin}" stroke="#c79b66" stroke-width="3"/><path d="M96 96 q-3 12 0 20 q2 5 7 5" stroke="#c79b66" stroke-width="2.5" fill="none"/>${extra}${brows}${eyes}${mouth}</svg>`;
+}
+const trainer={score:0,streak:0,total:0,correct:0,ms:250,target:null,await:false};
+(function setupTrainer(){
+  const ans=$('answerBtns'); if(!ans) return;
+  EMOTIONS.forEach(e=>{ const b=document.createElement('button'); b.textContent=e.emoji+' '+e.label; b.disabled=true; b.onclick=()=>trainAnswer(e.key,b); ans.appendChild(b); });
+  document.querySelectorAll('#trainerBox .speedRow button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#trainerBox .speedRow button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); trainer.ms=+b.dataset.ms; });
+  const bt=$('btnTrain'); if(bt) bt.onclick=trainStart;
+})();
+function trainStart(){
+  const bt=$('btnTrain'); if(bt) bt.disabled=true; const fb=$('feedback'); if(fb) fb.textContent='';
+  const ans=$('answerBtns'); ans.querySelectorAll('button').forEach(b=>{ b.disabled=true; b.className=''; });
+  let next; do{ next=EMOTIONS[Math.random()*7|0].key; }while(next===trainer.target&&Math.random()<0.8);
+  trainer.target=next;
+  $('faceBox').innerHTML=svgFace('neutral');
+  setTimeout(()=>{
+    $('faceBox').innerHTML=svgFace(trainer.target);
+    setTimeout(()=>{
+      $('faceBox').innerHTML=svgFace('neutral'); trainer.await=true;
+      ans.querySelectorAll('button').forEach(b=>b.disabled=false);
+      if(fb) fb.textContent='What flashed?';
+    },trainer.ms);
+  },700+Math.random()*900);
+}
+function trainAnswer(key,btn){
+  if(!trainer.await) return;
+  trainer.await=false; trainer.total++;
+  const ans=$('answerBtns'); ans.querySelectorAll('button').forEach(b=>b.disabled=true);
+  const em=EMOTIONS.find(x=>x.key===trainer.target);
+  if(key===trainer.target){
+    trainer.correct++; trainer.streak++; trainer.score+=trainer.ms<=120?3:trainer.ms<=250?2:1;
+    beep('good'); btn.classList.add('right');
+    $('feedback').innerHTML=`<b style="color:var(--good)">✓ Correct — ${em.label}</b><br>${FEATURES[trainer.target]}`;
+  }else{
+    trainer.streak=0; beep('bad'); btn.classList.add('wrong');
+    $('feedback').innerHTML=`<b style="color:var(--bad)">✗ It was ${em.emoji} ${em.label}</b><br>${FEATURES[trainer.target]}`;
+  }
+  $('faceBox').innerHTML=svgFace(trainer.target);
+  $('tScore').textContent=trainer.score; $('tStreak').textContent=trainer.streak;
+  $('tAcc').textContent=Math.round(100*trainer.correct/trainer.total)+'%';
+  const bt=$('btnTrain'); if(bt){ bt.disabled=false; bt.textContent='▶ Flash another'; }
+}
 
 /* ---- PWA + boot ---- */
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
