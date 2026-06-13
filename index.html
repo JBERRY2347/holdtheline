@@ -48,6 +48,12 @@ main{max-width:760px;margin:0 auto;padding:14px 12px 40px}
 .btn.bad{border-color:var(--bad);color:var(--bad)}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.block{display:flex;width:100%;justify-content:center}
+.btn.small{font-size:12px;padding:7px 11px}
+.playerList{margin:4px 0 8px}
+.playerRow{display:flex;gap:8px;margin-bottom:6px;align-items:center}
+.playerRow .in{flex:1;margin:0}
+.btnDel{flex:0 0 auto;width:42px;padding:0;justify-content:center;color:var(--dim)}
+.btnDel:hover{border-color:var(--bad);color:var(--bad)}
 .controls{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
 .chip{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap;display:inline-block}
 .chip.good{background:rgba(61,220,132,.15);color:var(--good)}
@@ -144,9 +150,11 @@ footer a{color:var(--accent)}
   <div class="card" id="teamSetup">
     <h2>Teams</h2>
     <label class="fld">Team 1 name</label><input class="in" id="tA" maxlength="24" placeholder="Team A">
-    <label class="fld">Team 1 players (comma separated)</label><input class="in" id="pA" placeholder="Sam, Jordan, Alex">
+    <label class="fld">Team 1 players</label><div id="playersA" class="playerList"></div>
+    <button class="btn small" data-act="addplayer" data-team="0">＋ Add player</button>
     <label class="fld" style="margin-top:16px">Team 2 name</label><input class="in" id="tB" maxlength="24" placeholder="Team B">
-    <label class="fld">Team 2 players (comma separated)</label><input class="in" id="pB" placeholder="Riley, Casey">
+    <label class="fld">Team 2 players</label><div id="playersB" class="playerList"></div>
+    <button class="btn small" data-act="addplayer" data-team="1">＋ Add player</button>
   </div>
   <div class="card">
     <h2 id="settingsHd">Match settings</h2>
@@ -1062,10 +1070,20 @@ function renderLobby(){
       <p class="lead" style="font-size:11.5px;margin-top:6px">Each player calibrates on their own device when their team defends.</p></div>`
      :`<div class="notice">Waiting for the host to start the match…</div>`}`;
 }
+/* editable per-player roster for the setup screen */
+let draftPlayers=[['',''],['','']];
+function syncDraftFromDOM(){
+  [0,1].forEach(t=>{ const ins=document.querySelectorAll(`[data-pteam="${t}"]`); if(ins.length) draftPlayers[t]=[...ins].map(i=>i.value); });
+}
+function renderPlayerList(t){
+  const el=$(t===0?'playersA':'playersB'); if(!el) return;
+  el.innerHTML=draftPlayers[t].map((nm,i)=>`<div class="playerRow"><input class="in" data-pteam="${t}" data-pidx="${i}" maxlength="20" placeholder="Player ${i+1}" value="${esc(nm)}"><button class="btn btnDel" data-act="delplayer" data-team="${t}" data-idx="${i}" aria-label="Remove player">✕</button></div>`).join('');
+}
 function renderSetup(){
   const dk=$('deck'); if(dk && !dk.dataset.filled){ dk.innerHTML=Object.entries(DECKS).map(([k,d])=>`<option value="${k}">${d.label}</option>`).join(''); dk.dataset.filled='1'; }
   const m=MODES[match.modeKey];
   const solo=!!m.solo;
+  if(!solo){ renderPlayerList(0); renderPlayerList(1); }
   $('teamSetup').style.display=solo?'none':'';
   $('targetFld').style.display=solo?'none':'';
   $('settingsHd').textContent=solo?'Practice settings':'Match settings';
@@ -1266,7 +1284,6 @@ function renderEnd(){
    INPUT HANDLING (delegated)
    ================================================================= */
 function val(id){ const e=$(id); return e?e.value.trim():''; }
-function parsePlayers(id){ return val(id).split(/[,\n]/).map(s=>s.trim()).filter(Boolean); }
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]'); if(!el||el.disabled) return;
   const act=el.dataset.act;
@@ -1280,14 +1297,16 @@ document.addEventListener('click',e=>{
         dispatch({t:'START_MATCH'});
         break;
       }
-      const teams=[
-        {name:val('tA')||'Team A',players:parsePlayers('pA'),score:0},
-        {name:val('tB')||'Team B',players:parsePlayers('pB'),score:0}];
-      if(!teams[0].players.length||!teams[1].players.length){ alert('Add at least one player to each team.'); return; }
+      syncDraftFromDOM();
+      const pa=draftPlayers[0].map(s=>s.trim()).filter(Boolean), pb=draftPlayers[1].map(s=>s.trim()).filter(Boolean);
+      if(!pa.length||!pb.length){ alert('Add at least one player to each team.'); return; }
+      const teams=[{name:val('tA')||'Team A',players:pa,score:0},{name:val('tB')||'Team B',players:pb,score:0}];
       dispatch({t:'CONFIG',cfg:{teams,deckKey:val('deck')||'party',target:+val('target')||15}});
       dispatch({t:'START_MATCH'});
       break;
     }
+    case 'addplayer': { const t=+el.dataset.team; syncDraftFromDOM(); draftPlayers[t].push(''); renderPlayerList(t); const ins=document.querySelectorAll(`[data-pteam="${t}"]`); if(ins.length) ins[ins.length-1].focus(); break; }
+    case 'delplayer': { const t=+el.dataset.team, i=+el.dataset.idx; syncDraftFromDOM(); draftPlayers[t].splice(i,1); if(!draftPlayers[t].length) draftPlayers[t].push(''); renderPlayerList(t); break; }
     case 'soloresults': dispatch({t:'SOLO_RESULTS'}); break;
     case 'soloagain': dispatch({t:'START_MATCH'}); break;
     case 'capture': { const who = net.mode!=='local' ? (net.me&&net.me.name) : (val('calWho')||match.speakers[0]); if(who) captureBaseline(who); break; }
